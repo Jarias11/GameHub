@@ -68,9 +68,17 @@ namespace GameClient.Wpf
 				Focus();
 				RoomStatusText.Text = "Not connected.";
 
+				MessageBox.Show("Loaded handler reached", "Debug");
+
 				// Fire-and-forget update check on startup
 				_ = UpdateService.CheckForUpdatesAsync(this);
 			};
+		}
+
+
+		private async void TestUpdateButton_Click(object sender, RoutedEventArgs e)
+		{
+			await UpdateService.CheckForUpdatesAsync(this);
 		}
 		private void BuildGameCards()
 		{

@@ -104,6 +104,9 @@
                                                 Margin="6,0,0,0"
                                                 Style="{StaticResource NeonButton}"
                                                 Click="JoinRoomButton_Click"/>
+                                        <Button Content="Test Update"
+                                                Click="TestUpdateButton_Click"
+                                                Margin="8"/>
                                 </Grid>
 
                                 <!-- ===== Game catalog (cards) ===== -->
@@ -225,9 +228,9 @@
                                                                                 <LinearGradientBrush StartPoint="0,0"
                                                                                                      EndPoint="1,0">
                                                                                         <GradientStop Color="#35E0FF"
-                                                                                                        Offset="0"/>
+                                                                                                      Offset="0"/>
                                                                                         <GradientStop Color="#C43BFF"
-                                                                                                        Offset="1"/>
+                                                                                                      Offset="1"/>
                                                                                 </LinearGradientBrush>
                                                                         </TextBlock.Foreground>
                                                                 </TextBlock>
