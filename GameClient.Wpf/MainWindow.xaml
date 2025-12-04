@@ -1,0 +1,503 @@
+﻿<Window x:Class="GameClient.Wpf.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GameHub Client"
+        Height="900"
+        Width="1000"
+        KeyDown="Window_KeyDown"
+        KeyUp="Window_KeyUp"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource AppBackgroundGradient}">
+
+        <Window.Resources>
+                <ResourceDictionary>
+                        <ResourceDictionary.MergedDictionaries>
+                                <ResourceDictionary Source="/Themes/GameHubTheme.xaml"/>
+                        </ResourceDictionary.MergedDictionaries>
+                </ResourceDictionary>
+        </Window.Resources>
+
+        <!-- Outer background grid -->
+        <Grid Margin="24"
+              MaxWidth="1500">
+                <!-- Shell card -->
+                <Border Style="{StaticResource ShellCard}">
+                        <Grid>
+                                <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <!-- header -->
+                                        <RowDefinition Height="Auto"/>
+                                        <!-- connection -->
+                                        <RowDefinition Height="Auto"/>
+                                        <!-- current game -->
+                                        <RowDefinition Height="*"/>
+                                        <!-- game catalog -->
+                                        <RowDefinition Height="Auto"/>
+                                        <!-- status + log -->
+                                </Grid.RowDefinitions>
+
+                                <!-- ===== Header / title ===== -->
+                                <StackPanel Grid.Row="0"
+                                            Margin="0,0,0,12"
+                                            HorizontalAlignment="Center">
+                                        <TextBlock Text="GameHub"
+                                                   Style="{StaticResource AppTitleText}"
+                                                   TextAlignment="Center"/>
+                                        <TextBlock Text="Connect, play, and compete in real-time."
+                                                   Style="{StaticResource AppSubtitleText}"
+                                                   TextAlignment="Center"/>
+                                </StackPanel>
+
+                                <!-- ===== Connection row ===== -->
+                                <Grid Grid.Row="1"
+                                      Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <!-- Server label -->
+                                                <ColumnDefinition Width="*"/>
+                                                <!-- Server textbox -->
+                                                <ColumnDefinition Width="Auto"/>
+                                                <!-- Connect button -->
+                                                <ColumnDefinition Width="Auto"/>
+                                                <!-- Join label -->
+                                                <ColumnDefinition Width="Auto"/>
+                                                <!-- Join textbox -->
+                                                <ColumnDefinition Width="Auto"/>
+                                                <!-- Join button -->
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Grid.Column="0"
+                                                   Text="Server:"
+                                                   Style="{StaticResource LabelText}"
+                                                   Margin="0,0,6,0"/>
+
+                                        <TextBox Grid.Column="1"
+                                                 x:Name="ServerUrlBox"
+                                                 Text="wss://src-small-glade-2517.fly.dev/ws"
+                                                 Style="{StaticResource NeonTextBox}"
+                                                 Margin="0,0,0,0"/>
+
+                                        <Button Grid.Column="2"
+                                                x:Name="ConnectButton"
+                                                Content="Connect"
+                                                Width="90"
+                                                Margin="10,0,0,0"
+                                                Style="{StaticResource NeonButton}"
+                                                Background="{StaticResource Brush.ConnectGreen}"
+                                                Click="ConnectButton_Click"/>
+
+                                        <TextBlock Grid.Column="3"
+                                                   Text="Join code:"
+                                                   Style="{StaticResource LabelText}"
+                                                   Margin="20,0,4,0"
+                                                   VerticalAlignment="Center"/>
+
+                                        <TextBox Grid.Column="4"
+                                                 x:Name="JoinCodeBox"
+                                                 Width="90"
+                                                 Style="{StaticResource NeonTextBox}"/>
+
+                                        <Button Grid.Column="5"
+                                                x:Name="JoinRoomButton"
+                                                Content="Join"
+                                                Width="70"
+                                                Margin="6,0,0,0"
+                                                Style="{StaticResource NeonButton}"
+                                                Click="JoinRoomButton_Click"/>
+                                </Grid>
+
+                                <!-- ===== Game catalog (cards) ===== -->
+                                <ScrollViewer Grid.Row="3"
+                                              Margin="0,10,0,0"
+                                              VerticalScrollBarVisibility="Hidden">
+                                        <StackPanel>
+
+                                                <!-- Arcade -->
+                                                <StackPanel Margin="0,0,0,16">
+                                                        <Grid Margin="0,8,0,4">
+                                                                <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                </Grid.ColumnDefinitions>
+
+                                                                <!-- Icon -->
+                                                                <TextBlock Grid.Column="0"
+                                                                           Text="🎮"
+                                                                           Margin="0,0,6,0"
+                                                                           VerticalAlignment="Center"/>
+
+                                                                <!-- Gradient title -->
+                                                                <TextBlock Grid.Column="1"
+                                                                           Text="Arcade"
+                                                                           Style="{StaticResource GameCategoryHeaderText}">
+                                                                        <TextBlock.Foreground>
+                                                                                <LinearGradientBrush StartPoint="0,0"
+                                                                                                     EndPoint="1,0">
+                                                                                        <GradientStop Color="#35E0FF"
+                                                                                                      Offset="0"/>
+                                                                                        <GradientStop Color="#C43BFF"
+                                                                                                      Offset="1"/>
+                                                                                </LinearGradientBrush>
+                                                                        </TextBlock.Foreground>
+                                                                </TextBlock>
+
+                                                                <!-- Divider line -->
+                                                                <Rectangle Grid.Column="2"
+                                                                           Height="1"
+                                                                           Margin="8,0,0,0"
+                                                                           VerticalAlignment="Center"
+                                                                           Fill="#20294A"/>
+                                                        </Grid>
+
+                                                        <!-- 🔹 New: ItemsControl bound to ArcadeGames -->
+                                                        <ItemsControl ItemsSource="{Binding ArcadeGames}">
+                                                                <ItemsControl.ItemsPanel>
+                                                                        <ItemsPanelTemplate>
+                                                                                <UniformGrid Columns="3"
+                                                                                             Margin="0,6,0,0"
+                                                                                             HorizontalAlignment="Stretch"/>
+                                                                        </ItemsPanelTemplate>
+                                                                </ItemsControl.ItemsPanel>
+
+                                                                <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate>
+                                                                                <Border Style="{StaticResource GameCard}"
+                                                                                        MouseLeftButtonUp="GameCard_MouseLeftButtonUp">
+                                                                                        <Grid>
+                                                                                                <Grid.RowDefinitions>
+                                                                                                        <RowDefinition Height="Auto"/>
+                                                                                                        <RowDefinition Height="Auto"/>
+                                                                                                        <RowDefinition Height="Auto"/>
+                                                                                                        <RowDefinition Height="*"/>
+                                                                                                        <RowDefinition Height="Auto"/>
+                                                                                                </Grid.RowDefinitions>
+
+                                                                                                <TextBlock Grid.Row="0"
+                                                                                                           Text="{Binding Emoji}"
+                                                                                                           FontSize="18"
+                                                                                                           Margin="0,0,0,4"/>
+
+                                                                                                <TextBlock Grid.Row="1"
+                                                                                                           Text="{Binding Name}"
+                                                                                                           Style="{StaticResource GameCardTitle}"/>
+
+                                                                                                <TextBlock Grid.Row="2"
+                                                                                                           Text="{Binding Tagline}"
+                                                                                                           Style="{StaticResource GameCardSubtitle}"/>
+
+                                                                                                <TextBlock Grid.Row="3"
+                                                                                                           Text="{Binding PlayersText}"
+                                                                                                           Style="{StaticResource GameCardMeta}"
+                                                                                                           Margin="0,6,0,0"/>
+
+                                                                                                <TextBlock Grid.Row="4"
+                                                                                                           Text="Click to create room →"
+                                                                                                           Style="{StaticResource GameCardMeta}"
+                                                                                                           Margin="0,8,0,0"
+                                                                                                           Foreground="{StaticResource Brush.AccentCyan}"/>
+                                                                                        </Grid>
+                                                                                </Border>
+                                                                        </DataTemplate>
+                                                                </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                </StackPanel>
+
+
+                                                <!-- Board Games -->
+                                                <StackPanel Margin="0,0,0,16">
+                                                        <Grid Margin="0,8,0,4">
+                                                                <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                </Grid.ColumnDefinitions>
+
+                                                                <TextBlock Grid.Column="0"
+                                                                           Text="♟"
+                                                                           Margin="0,0,6,0"
+                                                                           VerticalAlignment="Center"/>
+
+                                                                <TextBlock Grid.Column="1"
+                                                                           Text="Board Games"
+                                                                           Style="{StaticResource GameCategoryHeaderText}">
+                                                                        <TextBlock.Foreground>
+                                                                                <LinearGradientBrush StartPoint="0,0"
+                                                                                                     EndPoint="1,0">
+                                                                                        <GradientStop Color="#35E0FF"
+                                                                                                        Offset="0"/>
+                                                                                        <GradientStop Color="#C43BFF"
+                                                                                                        Offset="1"/>
+                                                                                </LinearGradientBrush>
+                                                                        </TextBlock.Foreground>
+                                                                </TextBlock>
+
+                                                                <Rectangle Grid.Column="2"
+                                                                           Height="1"
+                                                                           Margin="8,0,0,0"
+                                                                           VerticalAlignment="Center"
+                                                                           Fill="#20294A"/>
+                                                        </Grid>
+
+                                                        <!-- 🔹 New: ItemsControl bound to BoardGames -->
+                                                        <ItemsControl ItemsSource="{Binding BoardGames}">
+                                                                <ItemsControl.ItemsPanel>
+                                                                        <ItemsPanelTemplate>
+                                                                                <UniformGrid Columns="3"
+                                                                                             Margin="0,6,0,0"
+                                                                                             HorizontalAlignment="Stretch"/>
+                                                                        </ItemsPanelTemplate>
+                                                                </ItemsControl.ItemsPanel>
+
+                                                                <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate>
+                                                                                <Border Style="{StaticResource GameCard}"
+                                                                                        MouseLeftButtonUp="GameCard_MouseLeftButtonUp">
+                                                                                        <Grid>
+                                                                                                <Grid.RowDefinitions>
+                                                                                                        <RowDefinition Height="Auto"/>
+                                                                                                        <RowDefinition Height="Auto"/>
+                                                                                                        <RowDefinition Height="Auto"/>
+                                                                                                        <RowDefinition Height="*"/>
+                                                                                                        <RowDefinition Height="Auto"/>
+                                                                                                </Grid.RowDefinitions>
+
+                                                                                                <TextBlock Grid.Row="0"
+                                                                                                           Text="{Binding Emoji}"
+                                                                                                           FontSize="18"
+                                                                                                           Margin="0,0,0,4"/>
+
+                                                                                                <TextBlock Grid.Row="1"
+                                                                                                           Text="{Binding Name}"
+                                                                                                           Style="{StaticResource GameCardTitle}"/>
+
+                                                                                                <TextBlock Grid.Row="2"
+                                                                                                           Text="{Binding Tagline}"
+                                                                                                           Style="{StaticResource GameCardSubtitle}"/>
+
+                                                                                                <TextBlock Grid.Row="3"
+                                                                                                           Text="{Binding PlayersText}"
+                                                                                                           Style="{StaticResource GameCardMeta}"
+                                                                                                           Margin="0,6,0,0"/>
+
+                                                                                                <TextBlock Grid.Row="4"
+                                                                                                           Text="Click to create room →"
+                                                                                                           Style="{StaticResource GameCardMeta}"
+                                                                                                           Margin="0,8,0,0"
+                                                                                                           Foreground="{StaticResource Brush.AccentCyan}"/>
+                                                                                        </Grid>
+                                                                                </Border>
+                                                                        </DataTemplate>
+                                                                </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                </StackPanel>
+
+
+                                                <!-- Word Games -->
+                                                <StackPanel Margin="0,0,0,16">
+                                                        <!-- Header -->
+                                                        <Grid Margin="0,8,0,4">
+                                                                <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                </Grid.ColumnDefinitions>
+
+                                                                <TextBlock Grid.Column="0"
+                                                                           Text="🧩"
+                                                                           Margin="0,0,6,0"
+                                                                           VerticalAlignment="Center"/>
+
+                                                                <TextBlock Grid.Column="1"
+                                                                           Text="Word Games"
+                                                                           Style="{StaticResource GameCategoryHeaderText}">
+                                                                        <TextBlock.Foreground>
+                                                                                <LinearGradientBrush StartPoint="0,0"
+                                                                                                     EndPoint="1,0">
+                                                                                        <GradientStop Color="#35E0FF"
+                                                                                                      Offset="0"/>
+                                                                                        <GradientStop Color="#C43BFF"
+                                                                                                      Offset="1"/>
+                                                                                </LinearGradientBrush>
+                                                                        </TextBlock.Foreground>
+                                                                </TextBlock>
+
+                                                                <Rectangle Grid.Column="2"
+                                                                           Height="1"
+                                                                           Margin="8,0,0,0"
+                                                                           VerticalAlignment="Center"
+                                                                           Fill="#20294A"/>
+                                                        </Grid>
+
+                                                        <!-- ItemsControl bound to WordGames -->
+                                                        <ItemsControl ItemsSource="{Binding WordGames}">
+                                                                <ItemsControl.ItemsPanel>
+                                                                        <ItemsPanelTemplate>
+                                                                                <UniformGrid Columns="3"
+                                                                                             Margin="0,6,0,0"
+                                                                                             HorizontalAlignment="Stretch"/>
+                                                                        </ItemsPanelTemplate>
+                                                                </ItemsControl.ItemsPanel>
+
+                                                                <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate>
+                                                                                <Border Style="{StaticResource GameCard}"
+                                                                                        MouseLeftButtonUp="GameCard_MouseLeftButtonUp">
+                                                                                        <Grid>
+                                                                                                <Grid.RowDefinitions>
+                                                                                                        <RowDefinition Height="Auto"/>
+                                                                                                        <RowDefinition Height="Auto"/>
+                                                                                                        <RowDefinition Height="Auto"/>
+                                                                                                        <RowDefinition Height="*"/>
+                                                                                                        <RowDefinition Height="Auto"/>
+                                                                                                </Grid.RowDefinitions>
+
+                                                                                                <TextBlock Grid.Row="0"
+                                                                                                           Text="{Binding Emoji}"
+                                                                                                           FontSize="18"
+                                                                                                           Margin="0,0,0,4"/>
+
+                                                                                                <TextBlock Grid.Row="1"
+                                                                                                           Text="{Binding Name}"
+                                                                                                           Style="{StaticResource GameCardTitle}"/>
+
+                                                                                                <TextBlock Grid.Row="2"
+                                                                                                           Text="{Binding Tagline}"
+                                                                                                           Style="{StaticResource GameCardSubtitle}"/>
+
+                                                                                                <TextBlock Grid.Row="3"
+                                                                                                           Text="{Binding PlayersText}"
+                                                                                                           Style="{StaticResource GameCardMeta}"
+                                                                                                           Margin="0,6,0,0"/>
+
+                                                                                                <TextBlock Grid.Row="4"
+                                                                                                           Text="Click to create room →"
+                                                                                                           Style="{StaticResource GameCardMeta}"
+                                                                                                           Margin="0,8,0,0"
+                                                                                                           Foreground="{StaticResource Brush.AccentCyan}"/>
+                                                                                        </Grid>
+                                                                                </Border>
+                                                                        </DataTemplate>
+                                                                </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                </StackPanel>
+
+
+                                                <!-- Card Games (placeholders for now) -->
+                                                <StackPanel Margin="0,0,0,0">
+                                                        <Grid Margin="0,8,0,4">
+                                                                <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                </Grid.ColumnDefinitions>
+
+                                                                <TextBlock Grid.Column="0"
+                                                                           Text="🃏"
+                                                                           Margin="0,0,6,0"
+                                                                           VerticalAlignment="Center"/>
+
+                                                                <TextBlock Grid.Column="1"
+                                                                           Text="Card Games"
+                                                                           Style="{StaticResource GameCategoryHeaderText}">
+                                                                        <TextBlock.Foreground>
+                                                                                <LinearGradientBrush StartPoint="0,0"
+                                                                                                     EndPoint="1,0">
+                                                                                        <GradientStop Color="#35E0FF"
+                                                                                                      Offset="0"/>
+                                                                                        <GradientStop Color="#C43BFF"
+                                                                                                      Offset="1"/>
+                                                                                </LinearGradientBrush>
+                                                                        </TextBlock.Foreground>
+                                                                </TextBlock>
+
+                                                                <Rectangle Grid.Column="2"
+                                                                           Height="1"
+                                                                           Margin="8,0,0,0"
+                                                                           VerticalAlignment="Center"
+                                                                           Fill="#20294A"/>
+                                                        </Grid>
+                                                        <UniformGrid Columns="3"
+                                                                     Margin="0,6,0,0"
+                                                                     HorizontalAlignment="Stretch">
+                                                                <Border Style="{StaticResource GameCard}">
+                                                                        <TextBlock Text="Coming soon"
+                                                                                   VerticalAlignment="Center"
+                                                                                   HorizontalAlignment="Center"
+                                                                                   Foreground="{StaticResource Brush.TextSecondary}"/>
+                                                                </Border>
+                                                                <Border Style="{StaticResource GameCard}">
+                                                                        <TextBlock Text="Coming soon"
+                                                                                   VerticalAlignment="Center"
+                                                                                   HorizontalAlignment="Center"
+                                                                                   Foreground="{StaticResource Brush.TextSecondary}"/>
+                                                                </Border>
+                                                                <Border Style="{StaticResource GameCard}">
+                                                                        <TextBlock Text="Coming soon"
+                                                                                   VerticalAlignment="Center"
+                                                                                   HorizontalAlignment="Center"
+                                                                                   Foreground="{StaticResource Brush.TextSecondary}"/>
+                                                                </Border>
+                                                        </UniformGrid>
+                                                </StackPanel>
+
+                                        </StackPanel>
+                                </ScrollViewer>
+
+                                <!-- ===== Current game area ===== -->
+                                <GroupBox Grid.Row="2"
+                                          Style="{StaticResource NeonGroupBox}"
+                                          MinHeight="300">
+                                        <GroupBox.Header>
+                                                <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <!-- Left: title + players -->
+                                                        <StackPanel Grid.Column="0"
+                                                                    Orientation="Vertical">
+                                                                <TextBlock x:Name="CurrentGameTitleText"
+                                                                           Text="Current Game"
+                                                                           VerticalAlignment="Center"/>
+
+                                                                <TextBlock x:Name="CurrentGamePlayersText"
+                                                                           Text="No game active"
+                                                                           Style="{StaticResource StatusText}"
+                                                                           Margin="0,2,0,0"/>
+                                                        </StackPanel>
+
+                                                        <!-- Right: Restart button -->
+                                                        <Button x:Name="RestartGameButton"
+                                                                Grid.Column="1"
+                                                                Content="Restart"
+                                                                Width="90"
+                                                                Margin="8,0,0,0"
+                                                                Style="{StaticResource NeonButton}"
+                                                                Click="RestartGameButton_Click"
+                                                                IsEnabled="False"/>
+                                                </Grid>
+                                        </GroupBox.Header>
+
+                                        <ContentControl x:Name="GameHost"/>
+                                </GroupBox>
+
+                                <!-- ===== Status + log ===== -->
+                                <StackPanel Grid.Row="4"
+                                            Margin="0,10,0,0">
+                                        <TextBlock x:Name="RoomStatusText"
+                                                   Style="{StaticResource StatusText}"
+                                                   Margin="0,0,0,4"/>
+                                        <TextBox x:Name="LogBox"
+                                                 Height="110"
+                                                 VerticalScrollBarVisibility="Auto"
+                                                 IsReadOnly="True"
+                                                 TextWrapping="Wrap"
+                                                 Style="{StaticResource LogTextBox}"/>
+                                </StackPanel>
+
+                        </Grid>
+                </Border>
+        </Grid>
+</Window>

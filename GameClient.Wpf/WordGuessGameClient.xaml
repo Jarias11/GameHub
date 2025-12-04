@@ -1,0 +1,321 @@
+<UserControl x:Class="GameClient.Wpf.WordGuessGameClient"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <!-- Root layout -->
+        <StackPanel>
+
+            <!-- P1: Secret word -->
+            <TextBlock Text="Host (P1): enter a 5-letter word and click Set Secret."
+                       Margin="0,0,0,4"/>
+            <StackPanel Orientation="Horizontal"
+                        Margin="0,0,0,4">
+                <TextBlock Text="Secret:"
+                           VerticalAlignment="Center"
+                           Margin="0,0,4,0"/>
+                <TextBox x:Name="SecretWordBox"
+                         Width="80"
+                         MaxLength="5"/>
+                <Button x:Name="SetSecretButton"
+                        Content="Set Secret"
+                        Margin="8,0,0,0"
+                        Click="SetSecretButton_Click"/>
+            </StackPanel>
+
+            <Separator Margin="0,4"/>
+
+            <!-- Guesser section (centered) -->
+            <StackPanel HorizontalAlignment="Center"
+                        Margin="0,4,0,0">
+
+                <!-- P2: label -->
+                <TextBlock Text="Guesser (P2): enter a 5-letter guess and click Guess."
+                           Margin="0,0,0,4"
+                           TextAlignment="Center"/>
+
+
+                <ItemsControl x:Name="WordGuessHistoryPanel"
+                              Margin="0,0,0,4"
+                              HorizontalAlignment="Center"/>
+
+                <!-- Guess input area -->
+                <StackPanel Margin="0,8,0,4">
+
+
+
+                    <!-- Row: tiles + Guess button -->
+                    <StackPanel Orientation="Horizontal"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Center">
+
+                        <!-- 5 tiles for the current guess -->
+                        <StackPanel Orientation="Horizontal"
+                                    Margin="0,0,0,0">
+                            <Border x:Name="GuessTile0"
+                                    Width="32"
+                                    Height="32"
+                                    Margin="2"
+                                    Background="LightGray"
+                                    CornerRadius="4">
+                                <TextBlock HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           FontWeight="Bold"
+                                           Foreground="Black"/>
+                            </Border>
+                            <Border x:Name="GuessTile1"
+                                    Width="32"
+                                    Height="32"
+                                    Margin="2"
+                                    Background="LightGray"
+                                    CornerRadius="4">
+                                <TextBlock HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           FontWeight="Bold"
+                                           Foreground="Black"/>
+                            </Border>
+                            <Border x:Name="GuessTile2"
+                                    Width="32"
+                                    Height="32"
+                                    Margin="2"
+                                    Background="LightGray"
+                                    CornerRadius="4">
+                                <TextBlock HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           FontWeight="Bold"
+                                           Foreground="Black"/>
+                            </Border>
+                            <Border x:Name="GuessTile3"
+                                    Width="32"
+                                    Height="32"
+                                    Margin="2"
+                                    Background="LightGray"
+                                    CornerRadius="4">
+                                <TextBlock HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           FontWeight="Bold"
+                                           Foreground="Black"/>
+                            </Border>
+                            <Border x:Name="GuessTile4"
+                                    Width="32"
+                                    Height="32"
+                                    Margin="2"
+                                    Background="LightGray"
+                                    CornerRadius="4">
+                                <TextBlock HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           FontWeight="Bold"
+                                           Foreground="Black"/>
+                            </Border>
+                        </StackPanel>
+
+
+                    </StackPanel>
+
+                    <!-- Hidden TextBox to keep existing code references compiling -->
+                    <TextBox x:Name="GuessBox"
+                             Width="80"
+                             MaxLength="5"
+                             Visibility="Collapsed"/>
+                </StackPanel>
+
+                <!-- Status ("Try again", win/lose, etc.) -->
+                <TextBlock x:Name="WordGuessStatusText"
+                           Margin="0,4,0,4"
+                           TextAlignment="Center"/>
+
+                <!-- Keyboard label -->
+                <TextBlock Text="Keyboard"
+                           Margin="0,8,0,4"
+                           TextAlignment="Center"/>
+
+                <!-- On-screen keyboard UNDER everything -->
+                <StackPanel x:Name="KeyboardPanel"
+                            HorizontalAlignment="Center">
+
+                    <!-- Row 1: QWERTYUIOP -->
+                    <StackPanel Orientation="Horizontal"
+                                HorizontalAlignment="Center">
+                        <Button Content="Q"
+                                Tag="Q"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="W"
+                                Tag="W"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="E"
+                                Tag="E"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="R"
+                                Tag="R"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="T"
+                                Tag="T"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="Y"
+                                Tag="Y"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="U"
+                                Tag="U"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="I"
+                                Tag="I"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="O"
+                                Tag="O"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="P"
+                                Tag="P"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                    </StackPanel>
+
+                    <!-- Row 2: ASDFGHJKL -->
+                    <StackPanel Orientation="Horizontal"
+                                HorizontalAlignment="Center"
+                                Margin="10,0,0,0">
+                        <Button Content="A"
+                                Tag="A"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="S"
+                                Tag="S"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="D"
+                                Tag="D"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="F"
+                                Tag="F"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="G"
+                                Tag="G"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="H"
+                                Tag="H"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="J"
+                                Tag="J"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="K"
+                                Tag="K"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="L"
+                                Tag="L"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                    </StackPanel>
+
+                    <!-- Row 3: ZXCVBNM -->
+                    <StackPanel Orientation="Horizontal"
+                                HorizontalAlignment="Center"
+                                Margin="20,0,0,0">
+                        <Button Content="Z"
+                                Tag="Z"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="X"
+                                Tag="X"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="C"
+                                Tag="C"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="V"
+                                Tag="V"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="B"
+                                Tag="B"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="N"
+                                Tag="N"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+                        <Button Content="M"
+                                Tag="M"
+                                Width="30"
+                                Margin="2"
+                                Loaded="KeyboardKey_Loaded"
+                                Click="KeyboardKey_Click"/>
+
+                        <Button Content="⌫"
+                                Width="46"
+                                Margin="4,2,2,2"
+                                Click="BackspaceButton_Click"/>
+                    </StackPanel>
+                    <!-- Guess button -->
+                    <Button x:Name="GuessButton"
+                            Content="Guess"
+                            Margin="8,0,0,0"
+                            Click="GuessButton_Click"/>
+                </StackPanel>
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</UserControl>

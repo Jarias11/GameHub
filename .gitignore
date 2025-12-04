@@ -1,0 +1,51 @@
+# Build artifacts
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.pdb
+*.mdb
+
+# Rider, VSCode, VS files
+.vscode/
+.idea/
+*.csproj.user
+*.vs/
+
+# NuGet
+*.nupkg
+packages/
+.nuget/
+
+# Logs
+*.log
+
+# Auto-generated files
+Generated/
+Generated/**
+
+# Publish outputs (ALL publish folders)
+**/publish/
+
+# Explicit path you mentioned (safe to include even if glob handles it)
+GameClient.Wpf/bin/Release/net9.0-windows/win-x64/publish/
+
+# Build Transient
+project.lock.json
+project.assets.json
+
+# MacOS/Windows metadata
+.DS_Store
+Thumbs.db
+
+# Inno Setup output
+Output/
+*.exe
+
+# Ignore installer EXEs — these should ONLY be uploaded through GitHub Releases
+GameHubSetup_*.exe
+
+# Ignore temp folders
+temp/
+tmp/

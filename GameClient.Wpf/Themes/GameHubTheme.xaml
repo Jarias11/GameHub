@@ -1,0 +1,485 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+					xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+	<!-- ========== Core Colors ========== -->
+	<Color x:Key="Color.BackgroundDark">#050814</Color>
+	<Color x:Key="Color.PanelDark">#101526</Color>
+	<Color x:Key="Color.AccentCyan">#35E0FF</Color>
+	<Color x:Key="Color.AccentPurple">#C43BFF</Color>
+	<Color x:Key="Color.TextPrimary">#F4F6FF</Color>
+	<Color x:Key="Color.TextSecondary">#9CA6D8</Color>
+	<Color x:Key="Color.Error">#FF4E6A</Color>
+	<Color x:Key="Color.ConnectGreen">#21D27A</Color>
+	<Color x:Key="Color.DisconnectRed">#FF4E6A</Color>
+
+	<!-- ========== Brushes built from colors ========== -->
+	<SolidColorBrush x:Key="Brush.BackgroundDark"
+					 Color="{StaticResource Color.BackgroundDark}"/>
+	<SolidColorBrush x:Key="Brush.PanelDark"
+					 Color="{StaticResource Color.PanelDark}"/>
+	<SolidColorBrush x:Key="Brush.AccentCyan"
+					 Color="{StaticResource Color.AccentCyan}"/>
+	<SolidColorBrush x:Key="Brush.AccentPurple"
+					 Color="{StaticResource Color.AccentPurple}"/>
+	<SolidColorBrush x:Key="Brush.TextPrimary"
+					 Color="{StaticResource Color.TextPrimary}"/>
+	<SolidColorBrush x:Key="Brush.TextSecondary"
+					 Color="{StaticResource Color.TextSecondary}"/>
+	<SolidColorBrush x:Key="Brush.Error"
+					 Color="{StaticResource Color.Error}"/>
+	<SolidColorBrush x:Key="Brush.ConnectGreen"
+					 Color="{StaticResource Color.ConnectGreen}"/>
+	<SolidColorBrush x:Key="Brush.DisconnectRed"
+					 Color="{StaticResource Color.DisconnectRed}"/>
+
+	<!-- App background gradient -->
+	<LinearGradientBrush x:Key="AppBackgroundGradient"
+						 StartPoint="0,0"
+						 EndPoint="1,1">
+		<GradientStop Color="#050814"
+					  Offset="0"/>
+		<GradientStop Color="#060B1C"
+					  Offset="0.4"/>
+		<GradientStop Color="#050814"
+					  Offset="1"/>
+	</LinearGradientBrush>
+
+	<!-- Panel gradient / card background -->
+	<LinearGradientBrush x:Key="PanelBackgroundGradient"
+						 StartPoint="0,0"
+						 EndPoint="1,1">
+		<GradientStop Color="#141A30"
+					  Offset="0"/>
+		<GradientStop Color="#0D1224"
+					  Offset="1"/>
+	</LinearGradientBrush>
+
+	<!-- Accent gradient for borders/buttons -->
+	<LinearGradientBrush x:Key="AccentBorderBrush"
+						 StartPoint="0,0"
+						 EndPoint="1,1">
+		<GradientStop Color="#35E0FF"
+					  Offset="0"/>
+		<GradientStop Color="#C43BFF"
+					  Offset="1"/>
+	</LinearGradientBrush>
+
+	<!-- Soft glow used on neon panels / buttons -->
+	<DropShadowEffect x:Key="NeonGlowEffect"
+					  Color="{StaticResource Color.AccentCyan}"
+					  BlurRadius="25"
+					  ShadowDepth="0"
+					  Opacity="0.5"/>
+
+	<!-- Stronger cyan/purple glow for hovers -->
+	<DropShadowEffect x:Key="NeonGlowStrongEffect"
+					  Color="{StaticResource Color.AccentCyan}"
+					  BlurRadius="35"
+					  ShadowDepth="0"
+					  Opacity="0.9"/>
+
+	<!-- ========== Typography ========== -->
+	<Style x:Key="AppTitleText"
+		   TargetType="TextBlock">
+		<Setter Property="Foreground"
+				Value="{StaticResource Brush.TextPrimary}"/>
+		<Setter Property="FontSize"
+				Value="24"/>
+		<Setter Property="FontWeight"
+				Value="SemiBold"/>
+		<Setter Property="Margin"
+				Value="0,0,0,2"/>
+	</Style>
+
+	<Style x:Key="AppSubtitleText"
+		   TargetType="TextBlock">
+		<Setter Property="Foreground"
+				Value="{StaticResource Brush.TextSecondary}"/>
+		<Setter Property="FontSize"
+				Value="12"/>
+	</Style>
+
+	<Style x:Key="SectionHeaderText"
+		   TargetType="TextBlock">
+		<Setter Property="Foreground"
+				Value="{StaticResource Brush.TextSecondary}"/>
+		<Setter Property="FontSize"
+				Value="11"/>
+		<Setter Property="Margin"
+				Value="0,0,0,4"/>
+		<Setter Property="TextWrapping"
+				Value="Wrap"/>
+		<Setter Property="Opacity"
+				Value="0.9"/>
+	</Style>
+
+	<Style x:Key="LabelText"
+		   TargetType="TextBlock">
+		<Setter Property="Foreground"
+				Value="{StaticResource Brush.TextSecondary}"/>
+		<Setter Property="FontSize"
+				Value="11"/>
+		<Setter Property="VerticalAlignment"
+				Value="Center"/>
+	</Style>
+
+	<!-- ========== Shell / Panel Styles ========== -->
+
+	<!-- Main shell card that everything sits in -->
+	<Style x:Key="ShellCard"
+		   TargetType="Border">
+		<Setter Property="CornerRadius"
+				Value="18"/>
+		<Setter Property="Padding"
+				Value="18"/>
+		<Setter Property="Background"
+				Value="{StaticResource PanelBackgroundGradient}"/>
+		<Setter Property="BorderBrush"
+				Value="{StaticResource AccentBorderBrush}"/>
+		<Setter Property="BorderThickness"
+				Value="1"/>
+		<Setter Property="Effect"
+				Value="{StaticResource NeonGlowEffect}"/>
+	</Style>
+
+	<!-- GroupBox with neon header bar -->
+	<Style x:Key="NeonGroupBox"
+		   TargetType="GroupBox">
+		<Setter Property="Foreground"
+				Value="{StaticResource Brush.TextPrimary}"/>
+		<Setter Property="BorderBrush"
+				Value="{StaticResource AccentBorderBrush}"/>
+		<Setter Property="BorderThickness"
+				Value="1"/>
+		<Setter Property="Margin"
+				Value="0,12,0,0"/>
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="GroupBox">
+					<Grid>
+						<Grid.RowDefinitions>
+							<RowDefinition Height="Auto"/>
+							<RowDefinition Height="*"/>
+						</Grid.RowDefinitions>
+
+						<!-- Header -->
+						<Border Grid.Row="0"
+								Margin="4,0,4,0"
+								Padding="6,2"
+								CornerRadius="8">
+							<Border.Background>
+								<LinearGradientBrush StartPoint="0,0"
+													 EndPoint="1,1">
+									<GradientStop Color="#35E0FF"
+												  Offset="0"/>
+									<GradientStop Color="#C43BFF"
+												  Offset="1"/>
+								</LinearGradientBrush>
+							</Border.Background>
+							<ContentPresenter ContentSource="Header"
+											  Margin="4,0"
+											  RecognizesAccessKey="True"
+											  TextElement.FontSize="11"
+											  TextElement.FontWeight="SemiBold"
+											  TextElement.Foreground="#050814"/>
+						</Border>
+
+						<!-- Content -->
+						<Border Grid.Row="1"
+								Margin="0,6,0,0"
+								CornerRadius="14"
+								Background="#050814"
+								BorderBrush="{TemplateBinding BorderBrush}"
+								BorderThickness="{TemplateBinding BorderThickness}">
+							<ContentPresenter Margin="12"/>
+						</Border>
+					</Grid>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<!-- ========== Input Controls ========== -->
+
+	<!-- Neon TextBox -->
+	<Style x:Key="NeonTextBox"
+		   TargetType="TextBox">
+		<Setter Property="Foreground"
+				Value="{StaticResource Brush.TextPrimary}"/>
+		<Setter Property="Background"
+				Value="#101526"/>
+		<Setter Property="BorderBrush"
+				Value="{StaticResource AccentBorderBrush}"/>
+		<Setter Property="BorderThickness"
+				Value="1"/>
+		<Setter Property="Padding"
+				Value="6,4"/>
+		<Setter Property="SnapsToDevicePixels"
+				Value="True"/>
+		<Setter Property="CaretBrush"
+				Value="{StaticResource Brush.AccentCyan}"/>
+		<Setter Property="Effect"
+				Value="{StaticResource NeonGlowEffect}"/>
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="TextBox">
+					<Border x:Name="Border"
+							Background="{TemplateBinding Background}"
+							BorderBrush="{TemplateBinding BorderBrush}"
+							BorderThickness="{TemplateBinding BorderThickness}"
+							CornerRadius="8">
+						<ScrollViewer x:Name="PART_ContentHost"
+									  Margin="2"/>
+					</Border>
+					<ControlTemplate.Triggers>
+						<Trigger Property="IsEnabled"
+								 Value="False">
+							<Setter TargetName="Border"
+									Property="Opacity"
+									Value="0.5"/>
+						</Trigger>
+						<Trigger Property="IsKeyboardFocused"
+								 Value="True">
+							<Setter TargetName="Border"
+									Property="BorderBrush"
+									Value="{StaticResource Brush.AccentCyan}"/>
+						</Trigger>
+					</ControlTemplate.Triggers>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<!-- Neon Button with hover animation -->
+	<Style x:Key="NeonButton"
+		   TargetType="Button">
+		<Setter Property="Foreground"
+				Value="{StaticResource Brush.TextPrimary}"/>
+		<Setter Property="Background"
+				Value="#101526"/>
+		<Setter Property="BorderBrush"
+				Value="{StaticResource AccentBorderBrush}"/>
+		<Setter Property="BorderThickness"
+				Value="1"/>
+		<Setter Property="Padding"
+				Value="8,4"/>
+		<Setter Property="Margin"
+				Value="0,0,0,0"/>
+		<Setter Property="Cursor"
+				Value="Hand"/>
+		<Setter Property="SnapsToDevicePixels"
+				Value="True"/>
+		<Setter Property="Effect"
+				Value="{StaticResource NeonGlowEffect}"/>
+		<Setter Property="RenderTransformOrigin"
+				Value="0.5,0.5"/>
+		<Setter Property="RenderTransform">
+			<Setter.Value>
+				<ScaleTransform ScaleX="1"
+								ScaleY="1"/>
+			</Setter.Value>
+		</Setter>
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="Button">
+					<Border x:Name="border"
+							CornerRadius="10"
+							Background="{TemplateBinding Background}"
+							BorderBrush="{TemplateBinding BorderBrush}"
+							BorderThickness="{TemplateBinding BorderThickness}"
+							Padding="{TemplateBinding Padding}">
+						<ContentPresenter HorizontalAlignment="Center"
+										  VerticalAlignment="Center"/>
+					</Border>
+					<ControlTemplate.Triggers>
+						<Trigger Property="IsMouseOver"
+								 Value="True">
+							<Setter TargetName="border"
+									Property="Background">
+								<Setter.Value>
+									<LinearGradientBrush StartPoint="0,0"
+														 EndPoint="1,1">
+										<GradientStop Color="#18243F"
+													  Offset="0"/>
+										<GradientStop Color="#121A35"
+													  Offset="1"/>
+									</LinearGradientBrush>
+								</Setter.Value>
+							</Setter>
+							<Setter Property="Effect"
+									Value="{StaticResource NeonGlowStrongEffect}"/>
+							<Setter Property="RenderTransform">
+								<Setter.Value>
+									<ScaleTransform ScaleX="1.03"
+													ScaleY="1.03"/>
+								</Setter.Value>
+							</Setter>
+						</Trigger>
+						<Trigger Property="IsPressed"
+								 Value="True">
+							<Setter Property="RenderTransform">
+								<Setter.Value>
+									<ScaleTransform ScaleX="0.97"
+													ScaleY="0.97"/>
+								</Setter.Value>
+							</Setter>
+							<Setter TargetName="border"
+									Property="Opacity"
+									Value="0.9"/>
+						</Trigger>
+						<Trigger Property="IsEnabled"
+								 Value="False">
+							<Setter TargetName="border"
+									Property="Opacity"
+									Value="0.4"/>
+						</Trigger>
+					</ControlTemplate.Triggers>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<!-- Log TextBox (read-only console) -->
+	<Style x:Key="LogTextBox"
+		   TargetType="TextBox">
+		<Setter Property="Foreground"
+				Value="{StaticResource Brush.TextSecondary}"/>
+		<Setter Property="Background"
+				Value="#060814"/>
+		<Setter Property="BorderBrush"
+				Value="#151A2E"/>
+		<Setter Property="BorderThickness"
+				Value="1"/>
+		<Setter Property="FontFamily"
+				Value="Consolas"/>
+		<Setter Property="FontSize"
+				Value="11"/>
+		<Setter Property="Padding"
+				Value="6"/>
+	</Style>
+
+	<!-- Status text -->
+	<Style x:Key="StatusText"
+		   TargetType="TextBlock">
+		<Setter Property="Foreground"
+				Value="{StaticResource Brush.TextSecondary}"/>
+		<Setter Property="FontSize"
+				Value="11"/>
+	</Style>
+
+	<!-- Category header ("Arcade", "Board Games", etc.) -->
+	<Style x:Key="GameCategoryHeaderText"
+		   TargetType="TextBlock">
+		<Setter Property="Foreground"
+				Value="{StaticResource Brush.TextSecondary}"/>
+		<Setter Property="FontSize"
+				Value="20"/>
+		<Setter Property="FontWeight"
+				Value="SemiBold"/>
+		<Setter Property="Margin"
+				Value="0,5,0,5"/>
+	</Style>
+
+	<!-- Game card container -->
+	<Style x:Key="GameCard"
+		   TargetType="Border">
+		<Setter Property="CornerRadius"
+				Value="14"/>
+		<Setter Property="Padding"
+				Value="12"/>
+		<Setter Property="Margin"
+				Value="0,0,12,12"/>
+		<Setter Property="Background"
+				Value="#0B1020"/>
+		<Setter Property="BorderBrush"
+				Value="#1E2A4C"/>
+		<Setter Property="BorderThickness"
+				Value="1"/>
+		<Setter Property="SnapsToDevicePixels"
+				Value="True"/>
+		<Setter Property="Effect">
+			<Setter.Value>
+				<DropShadowEffect Color="#000000"
+								  BlurRadius="10"
+								  ShadowDepth="0"
+								  Opacity="0.6"/>
+			</Setter.Value>
+		</Setter>
+		<Style.Triggers>
+			<Trigger Property="IsMouseOver"
+					Value="True">
+				<Setter Property="BorderBrush"
+						Value="{StaticResource AccentBorderBrush}"/>
+				<Setter Property="Cursor"
+						Value="Hand"/>
+			</Trigger>
+		</Style.Triggers>
+	</Style>
+
+	<!-- Card text styles -->
+	<Style x:Key="GameCardTitle"
+		   TargetType="TextBlock">
+		<Setter Property="Foreground"
+				Value="{StaticResource Brush.TextPrimary}"/>
+		<Setter Property="FontSize"
+				Value="14"/>
+		<Setter Property="FontWeight"
+				Value="SemiBold"/>
+	</Style>
+
+	<Style x:Key="GameCardSubtitle"
+		   TargetType="TextBlock">
+		<Setter Property="Foreground"
+				Value="{StaticResource Brush.TextSecondary}"/>
+		<Setter Property="FontSize"
+				Value="11"/>
+	</Style>
+
+	<Style x:Key="GameCardMeta"
+		   TargetType="TextBlock">
+		<Setter Property="Foreground"
+				Value="{StaticResource Brush.TextSecondary}"/>
+		<Setter Property="FontSize"
+				Value="10"/>
+	</Style>
+
+	<!-- Link-style button at bottom of each card -->
+	<Style x:Key="GameCardLinkButton"
+		   TargetType="Button">
+		<Setter Property="Foreground"
+				Value="{StaticResource Brush.AccentCyan}"/>
+		<Setter Property="Background"
+				Value="Transparent"/>
+		<Setter Property="BorderBrush"
+				Value="Transparent"/>
+		<Setter Property="BorderThickness"
+				Value="0"/>
+		<Setter Property="HorizontalAlignment"
+				Value="Left"/>
+		<Setter Property="Padding"
+				Value="0"/>
+		<Setter Property="FontSize"
+				Value="11"/>
+		<Setter Property="Cursor"
+				Value="Hand"/>
+		<Setter Property="Effect"
+				Value="{x:Null}"/>
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="Button">
+					<TextBlock Text="{TemplateBinding Content}"
+							   Foreground="{TemplateBinding Foreground}"
+							   TextDecorations="None"/>
+					<ControlTemplate.Triggers>
+						<Trigger Property="IsMouseOver"
+								Value="True">
+							<Setter Property="Foreground"
+									Value="{StaticResource Brush.AccentPurple}"/>
+						</Trigger>
+					</ControlTemplate.Triggers>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+</ResourceDictionary>

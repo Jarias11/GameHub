@@ -1,0 +1,43 @@
+<UserControl x:Class="GameClient.Wpf.SnakeGameClient"
+			 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+			 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+	<Grid Background="#050816"
+			Margin="8">
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="*"/>
+		</Grid.RowDefinitions>
+
+		<!-- Header / status row -->
+		<StackPanel Grid.Row="0"
+					Orientation="Horizontal"
+					HorizontalAlignment="Stretch"
+					Margin="0,0,0,8">
+			<TextBlock Text="Snake (offline)"
+					   FontSize="18"
+					   FontWeight="Bold"
+					   Foreground="#F5F5F5"
+					   Margin="0,0,12,0"/>
+			<TextBlock Text="Use arrow keys or WASD to move"
+					   Foreground="#9CA3AF"/>
+			<TextBlock Text=" | Score: "
+					   Margin="12,0,0,0"
+					   Foreground="#9CA3AF"/>
+			<TextBlock x:Name="ScoreText"
+					   Text="0"
+					   Foreground="#22C55E"
+					   FontWeight="SemiBold"/>
+		</StackPanel>
+
+		<!-- Game area -->
+		<Border Grid.Row="1"
+				BorderThickness="1"
+				BorderBrush="#1F2937"
+				CornerRadius="4"
+				Background="#020617"
+				HorizontalAlignment="Center"
+				VerticalAlignment="Center">
+			<Canvas x:Name="GameCanvas"/>
+		</Border>
+	</Grid>
+</UserControl>
