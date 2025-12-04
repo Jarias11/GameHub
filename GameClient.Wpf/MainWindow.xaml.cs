@@ -67,6 +67,9 @@ namespace GameClient.Wpf
 			{
 				Focus();
 				RoomStatusText.Text = "Not connected.";
+
+				// Fire-and-forget update check on startup
+				_ = UpdateService.CheckForUpdatesAsync(this);
 			};
 		}
 		private void BuildGameCards()
