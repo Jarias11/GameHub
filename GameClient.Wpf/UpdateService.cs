@@ -43,16 +43,6 @@ public static class UpdateService
 
 
 
-			MessageBox.Show(
-	owner,
-	$"Current App Version: {CurrentVersion}\n" +
-	$"Latest GitHub Version: {info.Version}\n" +
-	$"Installer URL: {info.Url}",
-	"Update Debug Info",
-	MessageBoxButton.OK,
-	MessageBoxImage.Information
-);
-
 			// 3) Compare versions
 			if (latest > CurrentVersion)
 			{

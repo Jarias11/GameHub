@@ -5,12 +5,14 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Shapes;
 using System.Windows.Threading;
 using GameContracts;
+using GameClient.Wpf.ClientServices;
+using SkiaSharp;
+using SkiaSharp.Views.Desktop;
+using SkiaSharp.Views.WPF;
 
-namespace GameClient.Wpf
+namespace GameClient.Wpf.GameClients
 {
 	public partial class SnakeGameClient : UserControl, IGameClient
 	{
@@ -27,9 +29,9 @@ namespace GameClient.Wpf
 		{
 			InitializeComponent();
 
-			// We can safely touch GameCanvas after InitializeComponent
-			GameCanvas.Width = Cols * CellSize;
-			GameCanvas.Height = Rows * CellSize;
+			// ✅ Give Skia a real surface size in WPF DIPs
+			GameSurface.Width = Cols * CellSize;   // 40 * 20 = 800
+			GameSurface.Height = Rows * CellSize;   // 20 * 20 = 400
 
 			_timer.Interval = TimeSpan.FromMilliseconds(120); // tweak for speed
 			_timer.Tick += OnTimerTick;
@@ -57,8 +59,16 @@ namespace GameClient.Wpf
 			return false;
 		}
 
+		/// <summary>
+		/// Forwarded KeyDown from MainWindow.
+		/// We now route keys through InputService + still handle R and direction queuing.
+		/// </summary>
 		public void OnKeyDown(KeyEventArgs e)
 		{
+			// Global tracking of held keys
+			InputService.OnKeyDown(e.Key);
+
+			// Always allow restart
 			if (e.Key == Key.R)
 			{
 				ResetGame();
@@ -71,57 +81,57 @@ namespace GameClient.Wpf
 			{
 				case Key.Up:
 				case Key.W:
-					_upHeld = true;
 					QueueDirection(0, -1);
 					break;
 
 				case Key.Down:
 				case Key.S:
-					_downHeld = true;
 					QueueDirection(0, 1);
 					break;
 
 				case Key.Left:
 				case Key.A:
-					_leftHeld = true;
 					QueueDirection(-1, 0);
 					break;
 
 				case Key.Right:
 				case Key.D:
-					_rightHeld = true;
 					QueueDirection(1, 0);
 					break;
 			}
 		}
 
+		/// <summary>
+		/// Forwarded KeyUp from MainWindow.
+		/// We update InputService and then use it to decide whether to "fallback"
+		/// to a remaining held direction (Right after releasing Up, etc.).
+		/// </summary>
 		public void OnKeyUp(KeyEventArgs e)
 		{
+			// Update global held-keys state
+			InputService.OnKeyUp(e.Key);
+
 			if (!_isAlive) return;
 
 			switch (e.Key)
 			{
 				case Key.Up:
 				case Key.W:
-					_upHeld = false;
 					HandleKeyReleased(verticalReleased: true);
 					break;
 
 				case Key.Down:
 				case Key.S:
-					_downHeld = false;
 					HandleKeyReleased(verticalReleased: true);
 					break;
 
 				case Key.Left:
 				case Key.A:
-					_leftHeld = false;
 					HandleKeyReleased(verticalReleased: false);
 					break;
 
 				case Key.Right:
 				case Key.D:
-					_rightHeld = false;
 					HandleKeyReleased(verticalReleased: false);
 					break;
 			}
@@ -133,9 +143,7 @@ namespace GameClient.Wpf
 
 		private const int Rows = 20;
 		private const int Cols = 40;
-		private const double CellSize = 20.0;
-
-		private bool _upHeld, _downHeld, _leftHeld, _rightHeld;
+		private const double CellSize = 20.0; // logical size; Skia will scale
 
 		private readonly LinkedList<(int x, int y)> _snake = new();
 		private (int x, int y) _direction = (1, 0); // moving right
@@ -164,34 +172,54 @@ namespace GameClient.Wpf
 			_direction = (1, 0);
 			_nextDirection = null;
 
-			_upHeld = _downHeld = _leftHeld = _rightHeld = false;
-
 			_isAlive = true;
 			_score = 0;
 			ScoreText.Text = "0";
 
+			// Clear any stale key state when restarting
+			InputService.Clear();
+
 			SpawnFood();
 			_timer.Start();
-			Redraw();
+
+			// Trigger Skia redraw
+			GameSurface.InvalidateVisual();
 		}
 
+		/// <summary>
+		/// Called when a vertical or horizontal key is released.
+		/// Uses InputService to check what other keys are still held and
+		/// potentially "fallback" to a remaining direction (e.g. still holding Right).
+		/// </summary>
 		private void HandleKeyReleased(bool verticalReleased)
 		{
 			if (!_isAlive) return;
+
+			// Helper: current movement (pending or active)
+			var current = _nextDirection ?? _direction;
+
+			// Read current held state from InputService (arrow + WASD equivalents).
+			bool upHeld =
+				InputService.IsHeld(Key.Up) || InputService.IsHeld(Key.W);
+			bool downHeld =
+				InputService.IsHeld(Key.Down) || InputService.IsHeld(Key.S);
+			bool leftHeld =
+				InputService.IsHeld(Key.Left) || InputService.IsHeld(Key.A);
+			bool rightHeld =
+				InputService.IsHeld(Key.Right) || InputService.IsHeld(Key.D);
 
 			// If we released a vertical key (Up/Down), see if we should fall back to a horizontal one.
 			if (verticalReleased)
 			{
 				// Only do this if we're currently moving vertically (or have a vertical queued).
-				var current = _nextDirection ?? _direction;
 				if (current.y != 0)
 				{
 					// Prefer whichever horizontal key is still held (if only one).
-					if (_rightHeld && !_leftHeld)
+					if (rightHeld && !leftHeld)
 					{
 						ForceQueueDirection(1, 0);
 					}
-					else if (_leftHeld && !_rightHeld)
+					else if (leftHeld && !rightHeld)
 					{
 						ForceQueueDirection(-1, 0);
 					}
@@ -199,14 +227,13 @@ namespace GameClient.Wpf
 			}
 			else // released a horizontal key (Left/Right)
 			{
-				var current = _nextDirection ?? _direction;
 				if (current.x != 0)
 				{
-					if (_upHeld && !_downHeld)
+					if (upHeld && !downHeld)
 					{
 						ForceQueueDirection(0, -1);
 					}
-					else if (_downHeld && !_upHeld)
+					else if (downHeld && !upHeld)
 					{
 						ForceQueueDirection(0, 1);
 					}
@@ -309,7 +336,8 @@ namespace GameClient.Wpf
 				_snake.RemoveFirst();
 			}
 
-			Redraw();
+			// Ask Skia to redraw the scene with updated state
+			GameSurface.InvalidateVisual();
 		}
 
 		private void GameOver()
@@ -319,36 +347,64 @@ namespace GameClient.Wpf
 
 			// Simple "game over" status
 			ScoreText.Text = $"{_score} (Game Over - press R to restart)";
+
+			// Still redraw so we see final state
+			GameSurface.InvalidateVisual();
 		}
 
-		private void Redraw()
+		// ==== Skia drawing ===================================================
+
+		private void GameSurface_OnPaintSurface(object? sender, SKPaintSurfaceEventArgs e)
 		{
-			GameCanvas.Children.Clear();
+			var canvas = e.Surface.Canvas;
+			var info = e.Info;
 
-			// Draw food
-			DrawCell(_food.x, _food.y, Brushes.OrangeRed);
+			// Clear with a dark background similar to your WPF color
+			canvas.Clear(new SKColor(0x02, 0x06, 0x17)); // #020617
 
-			// Draw snake
-			foreach (var segment in _snake)
+			// Compute cell size based on surface size
+			float cellWidth = (float)info.Width / Cols;
+			float cellHeight = (float)info.Height / Rows;
+			float cellSize = Math.Min(cellWidth, cellHeight);
+
+			// Center the board if the container isn't exactly aspect-matched
+			float boardWidth = cellSize * Cols;
+			float boardHeight = cellSize * Rows;
+
+			float offsetX = (info.Width - boardWidth) / 2f;
+			float offsetY = (info.Height - boardHeight) / 2f;
+
+			// Helper to convert grid coords -> Skia rect
+			SKRect CellRect(int x, int y)
 			{
-				DrawCell(segment.x, segment.y, Brushes.LimeGreen);
+				float left = offsetX + x * cellSize + 1;
+				float top = offsetY + y * cellSize + 1;
+				float size = cellSize - 2; // small padding like before
+				return new SKRect(left, top, left + size, top + size);
 			}
-		}
 
-		private void DrawCell(int x, int y, Brush brush)
-		{
-			var rect = new Rectangle
+			using var foodPaint = new SKPaint
 			{
-				Width = CellSize - 2,
-				Height = CellSize - 2,
-				Fill = brush,
-				RadiusX = 3,
-				RadiusY = 3
+				Color = SKColors.OrangeRed,
+				IsAntialias = true
 			};
 
-			Canvas.SetLeft(rect, x * CellSize + 1);
-			Canvas.SetTop(rect, y * CellSize + 1);
-			GameCanvas.Children.Add(rect);
+			using var snakePaint = new SKPaint
+			{
+				Color = SKColors.LimeGreen,
+				IsAntialias = true
+			};
+
+			// Draw food
+			var foodRect = CellRect(_food.x, _food.y);
+			canvas.DrawRect(foodRect, foodPaint);
+
+			// Draw snake
+			foreach (var seg in _snake)
+			{
+				var segRect = CellRect(seg.x, seg.y);
+				canvas.DrawRect(segRect, snakePaint);
+			}
 		}
 	}
 }

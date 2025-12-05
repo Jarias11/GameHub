@@ -1,4 +1,4 @@
-<UserControl x:Class="GameClient.Wpf.TicTacToeGameClient"
+<UserControl x:Class="GameClient.Wpf.GameClients.TicTacToeGameClient"
 			 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 			 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 	<Grid Margin="8">
@@ -66,7 +66,7 @@
 
 		<!-- Status area -->
 		<StackPanel Grid.Row="1"
-				Margin="0,8,0,0">
+					Margin="0,8,0,0">
 			<TextBlock x:Name="StatusText"
 					   FontWeight="Bold"
 					   Text="Waiting for game..."/>

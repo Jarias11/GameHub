@@ -11,7 +11,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using GameContracts;
 
-namespace GameClient.Wpf
+namespace GameClient.Wpf.GameClients
 {
 	public partial class AnagramGameClient : UserControl, IGameClient
 	{

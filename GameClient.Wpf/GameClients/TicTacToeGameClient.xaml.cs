@@ -6,7 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using GameContracts;
 
-namespace GameClient.Wpf
+namespace GameClient.Wpf.GameClients
 {
 	public partial class TicTacToeGameClient : UserControl, IGameClient
 	{

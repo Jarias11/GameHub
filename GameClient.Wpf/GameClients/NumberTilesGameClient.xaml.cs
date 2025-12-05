@@ -8,7 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using GameContracts;
 
-namespace GameClient.Wpf
+namespace GameClient.Wpf.GameClients
 {
 	public partial class NumberTilesGameClient : UserControl, IGameClient
 	{

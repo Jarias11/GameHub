@@ -10,16 +10,18 @@ using System.Windows.Input;
 using GameContracts;
 using System.Windows.Media;
 using System.Windows.Controls;
+using System.ComponentModel;
 
 namespace GameClient.Wpf
 {
-	public partial class MainWindow : Window
+	public partial class MainWindow : Window, INotifyPropertyChanged
 	{
 		private ClientWebSocket? _socket;
 		private string? _roomCode;
 		private string? _playerId;
 		private GameType? _currentGameType;
 		private int _playerCount;
+		private bool _isConnected;
 
 
 		//XAML for binding
@@ -30,8 +32,9 @@ namespace GameClient.Wpf
 
 
 
+		public event PropertyChangedEventHandler? PropertyChanged;
+		private readonly Dictionary<GameType, IGameClient> _gameClients = new();
 
-		private readonly Dictionary<GameType, IGameClient> _gameClients;
 
 		public MainWindow()
 		{
@@ -40,35 +43,16 @@ namespace GameClient.Wpf
 			BuildGameCards();
 			DataContext = this;
 
-			// Create game clients & wire them up
-			var pong = new PongGameClient();
-			var wordGuess = new WordGuessGameClient();
-			var ticTacToe = new TicTacToeGameClient();
-			var anagram = new AnagramGameClient();
-			var snake = new SnakeGameClient();
-			var NumberTiles = new NumberTilesGameClient();
+			// Create game clients & wire them up and now discover all game clients automatically
+			BuildGameClients();
 
-			_gameClients = new()
-			{
-				[GameType.Pong] = pong,
-				[GameType.WordGuess] = wordGuess,
-				[GameType.TicTacToe] = ticTacToe,
-				[GameType.Anagram] = anagram,
-				[GameType.Snake] = snake,
-				[GameType.NumberTiles] = NumberTiles
-			};
 
-			foreach (var gc in _gameClients.Values)
-			{
-				gc.SetConnection(SendMessageAsync, IsSocketOpen);
-			}
 
 			this.Loaded += (_, __) =>
 			{
 				Focus();
 				RoomStatusText.Text = "Not connected.";
 
-				MessageBox.Show("Loaded handler reached", "Debug");
 
 				// Fire-and-forget update check on startup
 				_ = UpdateService.CheckForUpdatesAsync(this);
@@ -79,6 +63,31 @@ namespace GameClient.Wpf
 		private async void TestUpdateButton_Click(object sender, RoutedEventArgs e)
 		{
 			await UpdateService.CheckForUpdatesAsync(this);
+		}
+
+
+		private void BuildGameClients()
+		{
+			// Find all non-abstract types in this assembly that implement IGameClient
+			var gameClientTypes = typeof(MainWindow).Assembly
+				.GetTypes()
+				.Where(t =>
+					typeof(IGameClient).IsAssignableFrom(t) &&
+					!t.IsAbstract &&
+					t.GetConstructor(Type.EmptyTypes) != null); // needs parameterless ctor
+
+			foreach (var type in gameClientTypes)
+			{
+				// Create instance
+				if (Activator.CreateInstance(type) is IGameClient client)
+				{
+					// Use the GameType property as the key
+					_gameClients[client.GameType] = client;
+
+					// Wire up shared connection hooks (even if offline games ignore them)
+					client.SetConnection(SendMessageAsync, IsSocketOpen);
+				}
+			}
 		}
 		private void BuildGameCards()
 		{
@@ -91,7 +100,8 @@ namespace GameClient.Wpf
 					Emoji = info.Emoji,
 					Name = info.Name,
 					Tagline = info.Tagline,
-					PlayersText = info.PlayersText
+					PlayersText = info.PlayersText,
+					IsOnline = info.IsOnline
 				};
 
 				switch (info.Category)
@@ -140,6 +150,8 @@ namespace GameClient.Wpf
 				await _socket.ConnectAsync(uri, CancellationToken.None);
 				Log("Connected to server.");
 
+				IsConnected = true;
+
 				Dispatcher.Invoke(() =>
 				{
 					RoomStatusText.Text = "Connected. Create or join a room.";
@@ -175,6 +187,7 @@ namespace GameClient.Wpf
 
 					_socket.Dispose();
 					_socket = null;
+					IsConnected = false;
 				}
 
 				// Clear active room state
@@ -214,6 +227,7 @@ namespace GameClient.Wpf
 					RoomStatusText.Text = $"Playing offline: {info.Name}";
 					ActivateGame(card.GameType);
 					UpdateRoomUiState();
+					ScrollToCurrentGame();
 					return;
 				}
 
@@ -254,6 +268,8 @@ namespace GameClient.Wpf
 				_playerId = null;
 				_currentGameType = null;
 				_playerCount = 0;
+				IsConnected = false;
+
 				UpdateRoomUiState();
 
 				Dispatcher.Invoke(() =>
@@ -504,6 +520,8 @@ namespace GameClient.Wpf
 					$"Room {payload.RoomCode} created ({payload.GameType}). You are {payload.PlayerId}. Share the code with the other player.";
 				ActivateGame(payload.GameType);
 				UpdateRoomUiState();
+				ScrollToCurrentGame();
+
 			});
 
 			Log($"RoomCreated: code={payload.RoomCode}, game={payload.GameType}, you={payload.PlayerId}");
@@ -689,6 +707,27 @@ namespace GameClient.Wpf
 				LogBox.AppendText(text + Environment.NewLine);
 				LogBox.ScrollToEnd();
 			});
+		}
+		private void ScrollToCurrentGame()
+		{
+			// Jump to top so the header + current game are visible
+			CurrentGameGroupBox?.BringIntoView();
+		}
+		private void OnPropertyChanged(string propertyName)
+		=> PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+
+
+		public bool IsConnected
+		{
+			get => _isConnected;
+			private set
+			{
+				if (_isConnected != value)
+				{
+					_isConnected = value;
+					OnPropertyChanged(nameof(IsConnected));
+				}
+			}
 		}
 	}
 }

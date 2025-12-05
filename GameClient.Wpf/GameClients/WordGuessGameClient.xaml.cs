@@ -9,7 +9,7 @@ using System.Windows.Media;
 using GameContracts;
 using System.Collections.Generic;
 
-namespace GameClient.Wpf
+namespace GameClient.Wpf.GameClients
 {
 	public partial class WordGuessGameClient : UserControl, IGameClient
 	{

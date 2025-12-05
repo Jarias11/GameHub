@@ -12,5 +12,8 @@ namespace GameClient.Wpf
 		public string Name { get; init; } = "";
 		public string Tagline { get; init; } = "";
 		public string PlayersText { get; init; } = "";
+		
+		public bool IsOnline { get; set; }
+
 	}
 }

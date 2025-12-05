@@ -8,7 +8,7 @@ using System.Windows.Shapes;
 using GameContracts;
 using System.Windows.Controls;
 
-namespace GameClient.Wpf
+namespace GameClient.Wpf.GameClients
 {
 	public partial class PongGameClient : UserControl, IGameClient
 	{
