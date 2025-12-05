@@ -7,29 +7,35 @@ namespace GameLogic.Pong
 	/// </summary>
 	public static class PongEngine
 	{
-		public static void Update(PongRoomState s, Random rng)
+		/// <param name="dtSeconds">
+		/// Time step in seconds since last update (e.g. ~0.016 for 60 FPS).
+		/// </param>
+		public static void Update(PongRoomState s, Random rng, float dtSeconds)
 		{
-			const float dt = 1.0f;   // simple timestep
+			// Safety: avoid 0 or massive jumps
+			if (dtSeconds <= 0f)
+				dtSeconds = 0.016f; // ~60 FPS fallback
+			if (dtSeconds > 0.1f)
+				dtSeconds = 0.1f;   // cap at 100 ms
 
 			const float minY = 10f;
 			const float maxY = 90f;
 			const float paddleReach = 12f;
 
-
-			// Current paddle speed with cap 4×
+			// Current paddle speed (units/sec) with cap 4×
 			var rawPaddleSpeed = s.BasePaddleSpeed * s.PaddleSpeedMultiplier;
 			var maxPaddleSpeed = s.BasePaddleSpeed * 4f;
-			var paddleSpeed = rawPaddleSpeed > maxPaddleSpeed ? maxPaddleSpeed : rawPaddleSpeed;
+			var paddleSpeedPerSec = rawPaddleSpeed > maxPaddleSpeed ? maxPaddleSpeed : rawPaddleSpeed;
+
+			var paddleStep = paddleSpeedPerSec * dtSeconds;
 
 			// Move paddles
-			s.Paddle1Y = Clamp(s.Paddle1Y + s.Direction1 * paddleSpeed * dt, minY, maxY);
-			s.Paddle2Y = Clamp(s.Paddle2Y + s.Direction2 * paddleSpeed * dt, minY, maxY);
+			s.Paddle1Y = Clamp(s.Paddle1Y + s.Direction1 * paddleStep, minY, maxY);
+			s.Paddle2Y = Clamp(s.Paddle2Y + s.Direction2 * paddleStep, minY, maxY);
 
-
-
-			// Move ball
-			s.BallX += s.VelX * dt;
-			s.BallY += s.VelY * dt;
+			// Move ball (VelX / VelY are in units/sec)
+			s.BallX += s.VelX * dtSeconds;
+			s.BallY += s.VelY * dtSeconds;
 
 			// Top / bottom walls (clamp + bounce)
 			if (s.BallY <= 0)
@@ -68,7 +74,7 @@ namespace GameLogic.Pong
 				// Every 4 hits → faster ball (no cap)
 				if (s.HitCount % 4 == 0)
 				{
-					s.BallSpeedMultiplier += 0.30f; // ~15% faster every 4 hits
+					s.BallSpeedMultiplier += 0.30f; // ~30% faster every 4 hits
 
 					var dirX = Math.Sign(s.VelX);
 					var dirY = Math.Sign(s.VelY);
@@ -90,8 +96,8 @@ namespace GameLogic.Pong
 				}
 			}
 
-			// Scoring (keep logic the same; ball may go slightly past 0–100,
-			// but we’ll clamp visually in the client so it never leaves the window)
+			// Scoring – keep logic the same; we allow some overshoot past 0–100,
+			// the client can visually clamp if needed.
 			if (s.BallX < -5)
 			{
 				s.Score2++;
@@ -107,7 +113,6 @@ namespace GameLogic.Pong
 				s.BallSpeedMultiplier = 1f;
 				s.PaddleSpeedMultiplier = 1f;
 				s.ResetBall(rng, -1);
-				
 			}
 		}
 

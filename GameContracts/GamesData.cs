@@ -22,6 +22,8 @@ public enum GameType
 	TicTacToe,
 	Snake,
 	NumberTiles,
+	Checkers,
+	Jumps
 }
 
 public class GameInfo
@@ -93,6 +95,25 @@ public static class GameCatalog
 			Category = GameCategory.Board,
 			Emoji = "♟️",
 			Tagline = "Match Number Tiles",
+			PlayersText = "1 Player (offline)",
+			IsOnline = false
+		},
+		new()
+		{
+			Type = GameType.Checkers,
+			Name = "Checkers",
+			Category = GameCategory.Board,
+			Emoji = "♟️",
+			Tagline = "Classic strategy game",
+			PlayersText = "2 Players",
+			IsOnline = true
+		},
+		new() {
+			Type = GameType.Jumps,
+			Name = "Jumps",
+			Category = GameCategory.Arcade,
+			Emoji = "🤸",
+			Tagline = "Get as high as you can",
 			PlayersText = "1 Player (offline)",
 			IsOnline = false
 		},

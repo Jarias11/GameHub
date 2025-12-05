@@ -68,7 +68,7 @@ namespace GameServer
 		protected abstract TState CreateRoomState(string roomCode);
 
 		/// <summary>Run one simulation step on this room's state.</summary>
-		protected abstract void UpdateState(TState state);
+		protected abstract void UpdateState(TState state, float dtSeconds);
 
 		/// <summary>Build the outbound HubMessage (e.g. PongState) for this room.</summary>
 		protected abstract HubMessage CreateStateMessage(TState state);
@@ -76,7 +76,7 @@ namespace GameServer
 		/// <summary>
 		/// Main tick loop entry point. Called ~30 times per second by the hub.
 		/// </summary>
-		public async Task TickAsync()
+		public async Task TickAsync(float dtSeconds)
 		{
 			List<(ClientConnection client, HubMessage message)> outgoing;
 
@@ -89,7 +89,7 @@ namespace GameServer
 					var state = kvp.Value;
 
 					// Let subclass update state (physics, timers, etc.)
-					UpdateState(state);
+					UpdateState(state,dtSeconds);
 
 					// Build state snapshot message
 					var hubMsg = CreateStateMessage(state);

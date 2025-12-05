@@ -45,5 +45,5 @@ public interface ITickableGameHandler : IGameHandler
 	/// <summary>
 	/// Called periodically by the hub (e.g. 30 times per second for Pong).
 	/// </summary>
-	Task TickAsync();
+	Task TickAsync(float dtSeconds);
 }

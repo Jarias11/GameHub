@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using GameContracts;
 using GameLogic;
+using System.Diagnostics;
 
 
 
@@ -19,6 +20,7 @@ var clients = new List<ClientConnection>();
 var syncLock = new object();
 var rng = new Random();
 
+
 // Register game handlers
 var handlers = new Dictionary<GameType, IGameHandler>
 {
@@ -26,6 +28,7 @@ var handlers = new Dictionary<GameType, IGameHandler>
 	[GameType.WordGuess] = new WordGuessGameHandler(roomManager, clients, syncLock, SendAsync),
 	[GameType.TicTacToe] = new TicTacToeGameHandler(roomManager, clients, syncLock, SendAsync),
 	[GameType.Anagram] = new AnagramGameHandler(roomManager, clients, syncLock, SendAsync),
+	[GameType.Checkers]  = new CheckersGameHandler(roomManager, clients, syncLock, SendAsync),
 };
 
 var tickHandlers = handlers.Values.OfType<ITickableGameHandler>().ToList();
@@ -34,13 +37,18 @@ var tickHandlers = handlers.Values.OfType<ITickableGameHandler>().ToList();
 
 _ = Task.Run(async () =>
 {
+	var stopwatch = Stopwatch.StartNew();
 	while (true)
 	{
+		var dtSeconds = (float)stopwatch.Elapsed.TotalSeconds;
+		stopwatch.Restart();
+
 		foreach (var handler in tickHandlers)
 		{
-			await handler.TickAsync();
+			await handler.TickAsync(dtSeconds);   // <-- pass dt
 		}
-		await Task.Delay(33); // ~30 FPS
+
+		await Task.Delay(16); // ~60 FPS
 	}
 });
 

@@ -10,10 +10,11 @@ namespace GameLogic.Pong
     {
         public string RoomCode { get; }
 
-        // --- Base speeds & scaling ---
-        public float BaseBallSpeedX { get; } = 0.7f;
-        public float BaseBallSpeedY { get; } = 0.4f;
-        public float BasePaddleSpeed { get; } = 1.5f;
+        // --- Base speeds & scaling (units per second) ---
+        // These are tuned to roughly match your old behavior at ~30 FPS.
+        public float BaseBallSpeedX { get; } = 21f;  // was 0.7 * 30
+        public float BaseBallSpeedY { get; } = 12f;  // was 0.4 * 30
+        public float BasePaddleSpeed { get; } = 45f; // was 1.5 * 30
 
         /// <summary>Total number of paddle hits this match.</summary>
         public int HitCount { get; set; } = 0;
@@ -26,8 +27,8 @@ namespace GameLogic.Pong
 
         public float BallX { get; set; } = 50;
         public float BallY { get; set; } = 50;
-        public float VelX { get; set; } = 0f;
-        public float VelY { get; set; } = 0f;
+        public float VelX { get; set; } = 0f; // units/sec
+        public float VelY { get; set; } = 0f; // units/sec
 
         public float Paddle1Y { get; set; } = 50;
         public float Paddle2Y { get; set; } = 50;
@@ -54,6 +55,7 @@ namespace GameLogic.Pong
 
             var dirY = rng.Next(2) == 0 ? 1 : -1;
 
+            // Speeds are now per second, scaled by multiplier
             var speedX = BaseBallSpeedX * BallSpeedMultiplier;
             var speedY = BaseBallSpeedY * BallSpeedMultiplier;
 

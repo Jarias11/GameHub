@@ -50,7 +50,7 @@ namespace GameServer
 		}
 
 		/// <summary>Advance Pong simulation by one tick.</summary>
-		protected override void UpdateState(PongRoomState state)
+		protected override void UpdateState(PongRoomState state, float dtSeconds)
 		{
 			// Look up the room to see how many players are in it
 			var room = _roomManager.GetRoom(state.RoomCode);
@@ -83,7 +83,7 @@ namespace GameServer
 			}
 
 			// Normal physics when there are 2 players and the ball is live
-			PongEngine.Update(state, _rng);
+			PongEngine.Update(state, _rng, dtSeconds);
 		}
 
 		/// <summary>Build the PongState message to broadcast to clients.</summary>
