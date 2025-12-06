@@ -11,6 +11,7 @@ using GameContracts;
 using System.Windows.Media;
 using System.Windows.Controls;
 using System.ComponentModel;
+using System.Reflection;
 
 namespace GameClient.Wpf
 {
@@ -55,8 +56,12 @@ namespace GameClient.Wpf
 
 
 				// Fire-and-forget update check on startup
-				_ = UpdateService.CheckForUpdatesAsync(this);
-			};
+	 			_ = UpdateService.CheckForUpdatesAsync(this);
+	// 			MessageBox.Show(
+	// $"Assembly version: {Assembly.GetExecutingAssembly().GetName().Version}",
+	// "Version debug");
+	 		};
+
 		}
 
 
