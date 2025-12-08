@@ -28,7 +28,8 @@ var handlers = new Dictionary<GameType, IGameHandler>
 	[GameType.WordGuess] = new WordGuessGameHandler(roomManager, clients, syncLock, SendAsync),
 	[GameType.TicTacToe] = new TicTacToeGameHandler(roomManager, clients, syncLock, SendAsync),
 	[GameType.Anagram] = new AnagramGameHandler(roomManager, clients, syncLock, SendAsync),
-	[GameType.Checkers]  = new CheckersGameHandler(roomManager, clients, syncLock, SendAsync),
+	[GameType.Checkers] = new CheckersGameHandler(roomManager, clients, syncLock, SendAsync),
+	[GameType.JumpsOnline] = new JumpsOnlineGameHandler(roomManager, clients, syncLock, rng, SendAsync),	
 };
 
 var tickHandlers = handlers.Values.OfType<ITickableGameHandler>().ToList();
@@ -207,16 +208,26 @@ async Task HandleCreateRoom(HubMessage msg, ClientConnection client)
 				.Where(c => c != client && c.RoomCode == oldRoomCode)
 				.ToList();
 
+			// 🔹 Decide max players based on the NEW room's game type
+			int maxPlayers = room.GameType == GameType.JumpsOnline ? 3 : 2;
+
 			foreach (var other in othersInOldRoom)
 			{
 				// Find an open slot in the new room
-				string slot;
+				string? slot = null;
+
 				if (!room.Players.Contains("P1"))
 					slot = "P1";
 				else if (!room.Players.Contains("P2"))
 					slot = "P2";
-				else
-					continue; // new room is full; skip extra watchers if any
+				else if (maxPlayers == 3 && !room.Players.Contains("P3"))
+					slot = "P3";
+
+				if (slot == null)
+				{
+					// new room is full; skip extra watchers if any
+					continue;
+				}
 
 				roomManager.TryJoinRoom(room.RoomCode, slot, out _);
 
@@ -226,6 +237,7 @@ async Task HandleCreateRoom(HubMessage msg, ClientConnection client)
 				movedClients.Add(other);
 			}
 		}
+
 	}
 
 	// 5) Let the game handler know about the new room + joins
@@ -358,15 +370,21 @@ async Task HandleJoinRoom(HubMessage msg, ClientConnection client)
 	}
 	else
 	{
-		// Decide slot: P1 or P2
+		// Decide slot: P1, P2 (and P3 for JumpsOnline)
 		int playerCount;
 		string slot;
+
 		lock (syncLock)
 		{
+			// 🔹 Figure out max players for this room
+			int maxPlayers = room.GameType == GameType.JumpsOnline ? 3 : 2;
+
 			if (!room.Players.Contains("P1"))
 				slot = "P1";
 			else if (!room.Players.Contains("P2"))
 				slot = "P2";
+			else if (maxPlayers == 3 && !room.Players.Contains("P3"))
+				slot = "P3";
 			else
 			{
 				responsePayload = new RoomJoinedPayload

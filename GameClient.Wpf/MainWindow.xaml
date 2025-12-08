@@ -4,8 +4,8 @@
         Title="GameHub Client"
         Height="900"
         Width="1000"
-        KeyDown="Window_KeyDown"
-        KeyUp="Window_KeyUp"
+        PreviewKeyDown="Window_KeyDown"
+        PreviewKeyUp="Window_KeyUp"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource AppBackgroundGradient}">
 
@@ -481,7 +481,8 @@
                                                                         Margin="8,0,0,0"
                                                                         Style="{StaticResource NeonButton}"
                                                                         Click="RestartGameButton_Click"
-                                                                        IsEnabled="False"/>
+                                                                        IsEnabled="False"
+                                                                        Focusable="False"/>
                                                         </Grid>
                                                 </GroupBox.Header>
 

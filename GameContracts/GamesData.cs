@@ -23,7 +23,9 @@ public enum GameType
 	Snake,
 	NumberTiles,
 	Checkers,
-	Jumps
+	Jumps,
+	JumpsOnline,
+	SideScroller
 }
 
 public class GameInfo
@@ -117,6 +119,24 @@ public static class GameCatalog
 			PlayersText = "1 Player (offline)",
 			IsOnline = false
 		},
+		// new() {
+		// 	Type = GameType.JumpsOnline,
+		// 	Name = "Jumps Online",
+		// 	Category = GameCategory.Arcade,
+		// 	Emoji = "🤸",
+		// 	Tagline = "Get higher than your friends",
+		// 	PlayersText = "1-3 Players",
+		// 	IsOnline = true
+		// },
+		new() {
+			Type = GameType.SideScroller,
+			Name = "Side Scroller",
+			Category = GameCategory.Arcade,
+			Emoji = "🚀",
+			Tagline = "Run and dodge obstacles",
+			PlayersText = "1 Player (offline)",
+			IsOnline = false
+		}
 	};
 
 	public static GameInfo? Get(GameType type) =>

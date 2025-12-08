@@ -1,5 +1,5 @@
 {
-	"version": "1.0.0.3",
-	"url": "https://github.com/Jarias11/GameHub/releases/download/v1.0.3/GameHub.exe",
+	"version": "1.0.0.4",
+	"url": "https://github.com/Jarias11/GameHub/releases/download/v1.0.4/GameHub.exe",
 	"notes": "Added new rendering library for Snake game client to improve performance and visual quality."
 }

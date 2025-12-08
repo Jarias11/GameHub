@@ -56,11 +56,11 @@ namespace GameClient.Wpf
 
 
 				// Fire-and-forget update check on startup
-	 			_ = UpdateService.CheckForUpdatesAsync(this);
-	// 			MessageBox.Show(
-	// $"Assembly version: {Assembly.GetExecutingAssembly().GetName().Version}",
-	// "Version debug");
-	 		};
+				_ = UpdateService.CheckForUpdatesAsync(this);
+				// 			MessageBox.Show(
+				// $"Assembly version: {Assembly.GetExecutingAssembly().GetName().Version}",
+				// "Version debug");
+			};
 
 		}
 
@@ -473,6 +473,7 @@ namespace GameClient.Wpf
 						// Our Snake client treats OnRoomChanged as "reset"
 						gc.OnRoomChanged(null, null);
 					}
+					FocusGameHost();
 					return;
 				}
 			}
@@ -662,7 +663,20 @@ namespace GameClient.Wpf
 				GameHost.Content = null;
 			}
 		}
+		private void FocusGameHost()
+		{
+			// Ensure the game host can receive focus
+			GameHost.Focusable = true;
 
+			if (GameHost.Content is IInputElement element)
+			{
+				Keyboard.Focus(element);
+			}
+			else
+			{
+				Keyboard.Focus(GameHost);
+			}
+		}
 
 		// ========= Input handling =========
 

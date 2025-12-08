@@ -39,7 +39,10 @@ public class RoomManager
 		room = null;
 		if (!_rooms.TryGetValue(code, out var r)) return false;
 
-		if (!r.Players.Contains(playerId) && r.Players.Count < 2)
+		// 🔹 Decide max players based on game type
+		int maxPlayers = r.GameType == GameType.JumpsOnline ? 3 : 2;
+
+		if (!r.Players.Contains(playerId) && r.Players.Count < maxPlayers)
 		{
 			r.Players.Add(playerId);
 		}
