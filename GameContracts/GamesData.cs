@@ -25,7 +25,9 @@ public enum GameType
 	Checkers,
 	Jumps,
 	JumpsOnline,
-	SideScroller
+	SideScroller,
+	War,
+	WarOnline
 }
 
 public class GameInfo
@@ -119,15 +121,15 @@ public static class GameCatalog
 			PlayersText = "1 Player (offline)",
 			IsOnline = false
 		},
-		// new() {
-		// 	Type = GameType.JumpsOnline,
-		// 	Name = "Jumps Online",
-		// 	Category = GameCategory.Arcade,
-		// 	Emoji = "🤸",
-		// 	Tagline = "Get higher than your friends",
-		// 	PlayersText = "1-3 Players",
-		// 	IsOnline = true
-		// },
+		new() {
+			Type = GameType.JumpsOnline,
+			Name = "Jumps Online",
+			Category = GameCategory.Arcade,
+			Emoji = "🤸",
+			Tagline = "Get higher than your friends",
+			PlayersText = "1-3 Players",
+			IsOnline = true
+		},
 		new() {
 			Type = GameType.SideScroller,
 			Name = "Side Scroller",
@@ -136,7 +138,27 @@ public static class GameCatalog
 			Tagline = "Run and dodge obstacles",
 			PlayersText = "1 Player (offline)",
 			IsOnline = false
-		}
+		},
+		new()
+		{
+			Type = GameType.War,
+			Name = "War",
+			Category = GameCategory.Card,
+			Emoji = "🃏",
+			Tagline ="Classic War Card Game",
+			PlayersText = "1 Player (offline)",
+			IsOnline = false
+		},
+		new()
+		{
+			Type = GameType.WarOnline,
+			Name = "War Online",
+			Category = GameCategory.Card,
+			Emoji = "🃏",
+			Tagline ="Classic War Card Game",
+			PlayersText = "2 Players",
+			IsOnline = true
+		},
 	};
 
 	public static GameInfo? Get(GameType type) =>

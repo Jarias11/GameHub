@@ -14,10 +14,11 @@ namespace GameServer
 	public sealed class JumpsOnlineGameHandler : TickableGameHandler<JumpsOnlineRoomState>
 	{
 		private const float CountdownDuration = 3f;
+		private const float MagnetPullSpeed = 260f; // tweak to taste
 
 		// Latest input per player (key = "ROOM:PLAYER")
 		private readonly Dictionary<string, JumpsOnlineInputPayload> _latestInputs = new();
-
+		private readonly Dictionary<string, bool> _lastJumpHeld = new();
 		public JumpsOnlineGameHandler(
 			RoomManager roomManager,
 			List<ClientConnection> clients,
@@ -88,7 +89,7 @@ namespace GameServer
 			lock (_syncLock)
 			{
 				if (_rooms.TryGetValue(client.RoomCode, out var state) &&
-				    client.PlayerId != null)
+					client.PlayerId != null)
 				{
 					state.RemovePlayer(client.PlayerId);
 				}
@@ -189,11 +190,25 @@ namespace GameServer
 			state.ElapsedSinceRoundStart += dt;
 			state.ElapsedSinceScrollStart += dt;
 
-			// Scroll speed (no slow-scroll power-up yet)
-			state.ScrollSpeed = JumpsEngine.BaseScrollSpeed + JumpsEngine.ScrollAccel * state.ElapsedSinceScrollStart;
-			float effectiveScroll = state.ScrollSpeed;
+			// 1) Tick per-player power-up timers
+			TickPowerupTimers(state, dt);
 
-			// Horizontal movement + jump input
+			// 2) Base scroll speed (same formula as before)
+			state.ScrollSpeed = JumpsEngine.BaseScrollSpeed +
+								JumpsEngine.ScrollAccel * state.ElapsedSinceScrollStart;
+
+			// 3) SlowScroll: if ANY player has it active, everyone is slowed
+			bool anySlowScroll =
+				state.Players.Exists(p => p.SlowScrollActive && p.SlowScrollTimeRemaining > 0f);
+
+			float effectiveScroll = state.ScrollSpeed;
+			if (anySlowScroll)
+			{
+				effectiveScroll *= JumpsEngine.SlowScrollMultiplier;
+			}
+
+			// 4) Horizontal movement + jump / double-jump per player
+			//    JumpBoost + SpeedBoost only affect the player who owns them.
 			foreach (var p in state.Players)
 			{
 				if (!p.IsAlive)
@@ -206,22 +221,63 @@ namespace GameServer
 				if (input.Left && !input.Right) dir = -1f;
 				else if (input.Right && !input.Left) dir = 1f;
 
-				float moveSpeed = ComputeMoveSpeed(state, effectiveScroll);
+				float baseMoveSpeed = ComputeMoveSpeed(state, effectiveScroll);
+				float moveSpeed = baseMoveSpeed;
+
+				// SpeedBoost only for this player
+				if (p.SpeedBoostActive && p.SpeedBoostTimeRemaining > 0f)
+				{
+					moveSpeed *= JumpsEngine.SpeedBoostMultiplier;
+				}
 
 				p.X += dir * moveSpeed * dt;
 				if (p.X < 0f) p.X = 0f;
 				if (p.X > JumpsEngine.WorldWidth - p.Width)
 					p.X = JumpsEngine.WorldWidth - p.Width;
 
-				// Simple jump: if grounded and jump is held, start a jump.
-				// (No buffering / jump-cut / double-jump yet to keep v1 simple.)
-				if (input.JumpHeld && p.IsGrounded)
+				// ─────────────────────────────────────
+				// Jump input: edge + variable jump
+				// ─────────────────────────────────────
+				bool prevJumpHeld = GetLastJumpHeld(state, p.PlayerId);
+				bool justPressedJump = input.JumpHeld && !prevJumpHeld;
+				bool justReleasedJump = !input.JumpHeld && prevJumpHeld;
+				SetLastJumpHeld(state, p.PlayerId, input.JumpHeld);
+
+				// Jump / Double-jump using "just pressed"
+				if (justPressedJump && p.IsGrounded)
 				{
-					StartJump(state, p);
+					// NEW: hold Down + Jump to drop through
+					if (input.Down && p.CurrentPlatform != null)
+					{
+						StartDropThrough(p);
+					}
+					else
+					{
+						StartJump(state, p);
+					}
+				}
+				else if (justPressedJump && !p.IsGrounded &&
+						 p.DoubleJumpActive && p.DoubleJumpTimeRemaining > 0f &&
+						 p.AirJumpsRemaining > 0)
+				{
+					UseAirJump(state, p);
+				}
+
+
+				// Variable jump height ("jump cut") – same feel as offline:
+				// if you release while still going up and we haven't cut yet,
+				// reduce upward velocity so you fall sooner (short hop).
+				if (justReleasedJump && p.VY < 0f && !p.JumpCutApplied)
+				{
+					// If you already have JumpsEngine.JumpCutFactor, use that.
+					// Otherwise pick a factor like 0.35f for a nice short hop.
+					const float jumpCutFactor = 0.35f;
+					p.VY *= jumpCutFactor;
+					p.JumpCutApplied = true;
 				}
 			}
 
-			// Apply vertical scroll to world + players
+			// 5) Apply vertical scroll to world + players
 			float scrollDelta = effectiveScroll * dt;
 			state.GroundY += scrollDelta;
 
@@ -231,7 +287,7 @@ namespace GameServer
 			foreach (var p in state.Players)
 				p.Y += scrollDelta;
 
-			// Gravity, landing, death
+			// 6) Gravity, landing, death
 			foreach (var p in state.Players)
 			{
 				if (!p.IsAlive)
@@ -264,19 +320,54 @@ namespace GameServer
 				}
 			}
 
-			// Recycle / spawn platform rows
+			UpdateMagnetPulls(state, dt);
+
+			// 7) Pickup collisions
+			foreach (var p in state.Players)
+			{
+				if (!p.IsAlive)
+					continue;
+
+				CheckPickupCollisions(state, p);
+			}
+
+			// 8) Recycle / spawn platform rows
 			RecycleAndSpawnRows(state);
 
-			// Level progression based on scroll speed
+			// 9) Level progression based on scroll speed
 			UpdateLevel(state);
 
-			// Check end of round
+			// 10) End of round
 			if (state.AlivePlayerCount <= 0 && state.Phase == JumpsOnlinePhase.Running)
 			{
 				state.Phase = JumpsOnlinePhase.Finished;
 				ComputeResults(state);
 			}
 		}
+		private void StartDropThrough(JumpsOnlinePlayerRuntime p)
+		{
+			if (!p.IsGrounded || p.CurrentPlatform == null)
+				return;
+
+			p.HasStarted = true;
+
+			p.IsGrounded = false;
+			p.IsJumping = false;
+			p.JumpCutApplied = false;
+
+			// Ignore this platform for a short time
+			p.DropThroughPlatform = p.CurrentPlatform;
+			p.DropThroughTimer = JumpsEngine.DropThroughIgnoreTime;
+			p.CurrentPlatform = null;
+
+			// Cancel any upward motion and kick downward a bit (same vibe as offline)
+			if (p.VY < 0f)
+				p.VY = 0f;
+
+			p.VY += JumpsEngine.DropThroughKickSpeed;
+		}
+
+
 
 		// ─────────────────────────────────────────────
 		// Input helpers
@@ -325,8 +416,130 @@ namespace GameServer
 			p.JumpCutApplied = false;
 
 			float jumpVelocity = GetJumpVelocityForCurrentLevel(state.Level);
+
+			// JumpBoost only for this player
+			if (p.JumpBoostActive && p.JumpBoostTimeRemaining > 0f)
+			{
+				jumpVelocity *= JumpsEngine.JumpBoostMultiplier;
+			}
+
 			p.VY = jumpVelocity;
 		}
+		private void UseAirJump(JumpsOnlineRoomState state, JumpsOnlinePlayerRuntime p)
+		{
+			if (!p.DoubleJumpActive || p.DoubleJumpTimeRemaining <= 0f || p.AirJumpsRemaining <= 0)
+				return;
+
+			p.HasStarted = true;
+			p.IsGrounded = false;
+			p.IsJumping = true;
+			p.JumpCutApplied = false;
+
+			float jumpVelocity = GetJumpVelocityForCurrentLevel(state.Level);
+
+			if (p.JumpBoostActive && p.JumpBoostTimeRemaining > 0f)
+			{
+				jumpVelocity *= JumpsEngine.JumpBoostMultiplier;
+			}
+
+			p.VY = jumpVelocity;
+			p.AirJumpsRemaining--;
+		}
+
+		private void UpdateMagnetPulls(JumpsOnlineRoomState state, float dt)
+		{
+			float magnetRadius = JumpsEngine.MagnetRadiusWorld;
+			float magnetRadiusSq = magnetRadius * magnetRadius;
+
+			foreach (var plat in state.Platforms)
+			{
+				var pickup = plat.Pickup;
+				if (pickup == null || pickup.Collected)
+					continue;
+
+				// 🔴 IMPORTANT: only coins are affected by magnet
+				if (pickup.Type != JumpsOnlinePickupType.Coin)
+					continue;
+
+				// Find nearest magnet-active player in range
+				JumpsOnlinePlayerRuntime? targetPlayer = null;
+				float bestDistSq = float.MaxValue;
+
+				// Current coin center (either world position, or default above platform)
+				float startX = (pickup.IsMagnetPulling && (pickup.WorldX != 0f || pickup.WorldY != 0f))
+					? pickup.WorldX
+					: (plat.X + plat.Width / 2f);
+
+				float startY = (pickup.IsMagnetPulling && (pickup.WorldX != 0f || pickup.WorldY != 0f))
+					? pickup.WorldY
+					: (plat.Y - JumpsEngine.PickupRadius - 2f);
+
+				foreach (var player in state.Players)
+				{
+					if (!player.IsAlive)
+						continue;
+
+					if (!player.MagnetActive || player.MagnetTimeRemaining <= 0f)
+						continue;
+
+					float px = player.X + player.Width / 2f;
+					float py = player.Y + player.Height / 2f;
+
+					float dx = px - startX;
+					float dy = py - startY;
+					float distSq = dx * dx + dy * dy;
+
+					if (distSq <= magnetRadiusSq && distSq < bestDistSq)
+					{
+						bestDistSq = distSq;
+						targetPlayer = player;
+					}
+				}
+
+				if (targetPlayer == null)
+				{
+					// No magnet player near this coin – stop pulling and let it sit on the platform.
+					pickup.IsMagnetPulling = false;
+					pickup.WorldX = 0f;
+					pickup.WorldY = 0f;
+					continue;
+				}
+
+				// We have a magnet target – move coin toward that player
+				float targetX = targetPlayer.X + targetPlayer.Width / 2f;
+				float targetY = targetPlayer.Y + targetPlayer.Height / 2f;
+
+				float vx = targetX - startX;
+				float vy = targetY - startY;
+				float dist = MathF.Sqrt(vx * vx + vy * vy);
+
+				pickup.IsMagnetPulling = true;
+
+				if (dist < 0.001f)
+				{
+					pickup.WorldX = targetX;
+					pickup.WorldY = targetY;
+				}
+				else
+				{
+					float maxStep = MagnetPullSpeed * dt;
+					if (maxStep >= dist)
+					{
+						// Snap directly to player
+						pickup.WorldX = targetX;
+						pickup.WorldY = targetY;
+					}
+					else
+					{
+						float t = maxStep / dist;
+						pickup.WorldX = startX + vx * t;
+						pickup.WorldY = startY + vy * t;
+					}
+				}
+			}
+		}
+
+
 
 		private float GetJumpVelocityForCurrentLevel(int level)
 		{
@@ -399,6 +612,12 @@ namespace GameServer
 				p.HasStarted = false;
 				p.IsAlive = true;
 				p.Coins = 0;
+
+				// NEW
+				p.CurrentPlatform = null;
+				p.DropThroughPlatform = null;
+				p.DropThroughTimer = 0f;
+				p.AirJumpsRemaining = 0;
 			}
 
 			state.AlivePlayerCount = count;
@@ -425,15 +644,38 @@ namespace GameServer
 				JumpsOnlinePickupRuntime? pickup = null;
 				double roll = state.Rng.NextDouble();
 
-				// v1: only coins for now
-				if (roll < JumpsEngine.CoinChance)
+				double c = JumpsEngine.CoinChance;
+				double jb = JumpsEngine.JumpBoostChance;
+				double sb = JumpsEngine.SpeedBoostChance;
+				double mg = JumpsEngine.MagnetChance;
+				double dj = JumpsEngine.DoubleJumpChance;
+				double ss = JumpsEngine.SlowScrollChance;
+
+				// helper to create a pickup with initial world position
+				JumpsOnlinePickupRuntime NewPickup(JumpsOnlinePickupType type)
 				{
-					pickup = new JumpsOnlinePickupRuntime
+					return new JumpsOnlinePickupRuntime
 					{
-						Type = JumpsOnlinePickupType.Coin,
-						Collected = false
+						Type = type,
+						Collected = false,
+						IsMagnetPulling = false,
+						WorldX = centerX,
+						WorldY = y - JumpsEngine.PickupRadius - 2f
 					};
 				}
+
+				if (roll < c)
+					pickup = NewPickup(JumpsOnlinePickupType.Coin);
+				else if (roll < c + jb)
+					pickup = NewPickup(JumpsOnlinePickupType.JumpBoost);
+				else if (roll < c + jb + sb)
+					pickup = NewPickup(JumpsOnlinePickupType.SpeedBoost);
+				else if (roll < c + jb + sb + mg)
+					pickup = NewPickup(JumpsOnlinePickupType.Magnet);
+				else if (roll < c + jb + sb + mg + dj)
+					pickup = NewPickup(JumpsOnlinePickupType.DoubleJump);
+				else if (roll < c + jb + sb + mg + dj + ss)
+					pickup = NewPickup(JumpsOnlinePickupType.SlowScroll);
 
 				state.Platforms.Add(new JumpsOnlinePlatformRuntime
 				{
@@ -446,6 +688,103 @@ namespace GameServer
 				});
 			}
 		}
+
+
+		// ─────────────────────────────────────────────
+		// Power-up ticking helpers (per player)
+		// ─────────────────────────────────────────────
+
+		private static void TickPowerup(ref bool active, ref float timeRemaining, float dt)
+		{
+			if (!active)
+				return;
+
+			timeRemaining -= dt;
+			if (timeRemaining <= 0f)
+			{
+				timeRemaining = 0f;
+				active = false;
+			}
+		}
+
+		private void TickPowerupTimers(JumpsOnlineRoomState state, float dt)
+		{
+			foreach (var p in state.Players)
+			{
+				// Jump boost
+				if (p.JumpBoostActive)
+				{
+					p.JumpBoostTimeRemaining -= dt;
+					if (p.JumpBoostTimeRemaining <= 0f)
+					{
+						p.JumpBoostTimeRemaining = 0f;
+						p.JumpBoostActive = false;
+					}
+				}
+
+				// Speed boost
+				if (p.SpeedBoostActive)
+				{
+					p.SpeedBoostTimeRemaining -= dt;
+					if (p.SpeedBoostTimeRemaining <= 0f)
+					{
+						p.SpeedBoostTimeRemaining = 0f;
+						p.SpeedBoostActive = false;
+					}
+				}
+
+				// Magnet
+				if (p.MagnetActive)
+				{
+					p.MagnetTimeRemaining -= dt;
+					if (p.MagnetTimeRemaining <= 0f)
+					{
+						p.MagnetTimeRemaining = 0f;
+						p.MagnetActive = false;
+					}
+				}
+
+				// Slow scroll
+				if (p.SlowScrollActive)
+				{
+					p.SlowScrollTimeRemaining -= dt;
+					if (p.SlowScrollTimeRemaining <= 0f)
+					{
+						p.SlowScrollTimeRemaining = 0f;
+						p.SlowScrollActive = false;
+					}
+				}
+
+				// Double jump
+				if (p.DoubleJumpActive)
+				{
+					p.DoubleJumpTimeRemaining -= dt;
+					if (p.DoubleJumpTimeRemaining <= 0f)
+					{
+						p.DoubleJumpTimeRemaining = 0f;
+						p.DoubleJumpActive = false;
+						p.AirJumpsRemaining = 0;
+					}
+				}
+				else
+				{
+					p.AirJumpsRemaining = 0;
+				}
+
+				// NEW: drop-through timer
+				if (p.DropThroughTimer > 0f)
+				{
+					p.DropThroughTimer -= dt;
+					if (p.DropThroughTimer <= 0f)
+					{
+						p.DropThroughTimer = 0f;
+						p.DropThroughPlatform = null;
+					}
+				}
+			}
+		}
+
+
 
 		private void RecycleAndSpawnRows(JumpsOnlineRoomState state)
 		{
@@ -483,6 +822,10 @@ namespace GameServer
 		{
 			foreach (var plat in state.Platforms)
 			{
+				// NEW: if we're currently dropping through this platform, ignore it
+				if (p.DropThroughPlatform == plat && p.DropThroughTimer > 0f)
+					continue;
+
 				float platformTop = plat.Y;
 				float playerCenterX = p.X + p.Width / 2f;
 
@@ -502,28 +845,142 @@ namespace GameServer
 				p.VY = 0f;
 				p.IsGrounded = true;
 				p.IsJumping = false;
+
 				p.JumpCutApplied = false;
 
+				p.CurrentPlatform = plat;
+
+				if (p.DoubleJumpActive && p.DoubleJumpTimeRemaining > 0f)
+					p.AirJumpsRemaining = JumpsEngine.ExtraAirJumpsPerUse;
+				else
+					p.AirJumpsRemaining = 0;
+
 				// v1: simple pickup check on landing
-				HandlePickupCollision(p, plat);
+				CollectPickupIfOverlapping(p, plat);
 
 				break;
 			}
 		}
 
-		private void HandlePickupCollision(JumpsOnlinePlayerRuntime player, JumpsOnlinePlatformRuntime plat)
+		private void CheckPickupCollisions(JumpsOnlineRoomState state, JumpsOnlinePlayerRuntime player)
+		{
+			foreach (var plat in state.Platforms)
+			{
+				// Always use normal pickup radius; visual pull handles the rest
+				CollectPickupIfOverlapping(player, plat, JumpsEngine.PickupRadius);
+			}
+		}
+		private void CollectPickupIfOverlapping(
+	JumpsOnlinePlayerRuntime player,
+	JumpsOnlinePlatformRuntime plat)
+		{
+			// Just use the normal radius
+			CollectPickupIfOverlapping(player, plat, JumpsEngine.PickupRadius);
+		}
+
+		private void CollectPickupIfOverlapping(
+			JumpsOnlinePlayerRuntime player,
+			JumpsOnlinePlatformRuntime plat,
+			float radius)
 		{
 			var pickup = plat.Pickup;
 			if (pickup == null || pickup.Collected)
 				return;
 
-			// v1: only coins
-			if (pickup.Type == JumpsOnlinePickupType.Coin)
+			// Coin/powerup center (same position you use in drawing)
+			float cx = plat.X + plat.Width / 2f;
+			float cy = plat.Y - JumpsEngine.PickupRadius - 2f;
+
+			if (pickup.IsMagnetPulling && (pickup.WorldX != 0f || pickup.WorldY != 0f))
+			{
+				cx = pickup.WorldX;
+				cy = pickup.WorldY;
+			}
+			else
+			{
+				cx = plat.X + plat.Width / 2f;
+				cy = plat.Y - JumpsEngine.PickupRadius - 2f;
+			}
+
+			// Player AABB
+			float left = player.X;
+			float right = player.X + player.Width;
+			float top = player.Y;
+			float bottom = player.Y + player.Height;
+
+			// Nearest point on the player rect to the coin center
+			float nearestX = MathF.Max(left, MathF.Min(cx, right));
+			float nearestY = MathF.Max(top, MathF.Min(cy, bottom));
+
+			float dx = cx - nearestX;
+			float dy = cy - nearestY;
+
+			if (dx * dx + dy * dy <= radius * radius)
 			{
 				pickup.Collected = true;
-				player.Coins++;
+				ApplyPickupEffect(player, pickup);
 			}
 		}
+		private bool GetLastJumpHeld(JumpsOnlineRoomState state, string playerId)
+		{
+			string key = $"{state.RoomCode}:{playerId}";
+			return _lastJumpHeld.TryGetValue(key, out var last) && last;
+		}
+
+		private void SetLastJumpHeld(JumpsOnlineRoomState state, string playerId, bool current)
+		{
+			string key = $"{state.RoomCode}:{playerId}";
+			_lastJumpHeld[key] = current;
+		}
+
+		private void ApplyPickupEffect(JumpsOnlinePlayerRuntime player, JumpsOnlinePickupRuntime pickup)
+		{
+			switch (pickup.Type)
+			{
+				case JumpsOnlinePickupType.Coin:
+					// Only coins give points (matches offline JumpsEngine)
+					player.Coins++;
+					break;
+
+				case JumpsOnlinePickupType.JumpBoost:
+					player.JumpBoostActive = true;
+					player.JumpBoostTimeRemaining += JumpsEngine.PowerupDuration;
+					break;
+
+				case JumpsOnlinePickupType.SpeedBoost:
+					player.SpeedBoostActive = true;
+					player.SpeedBoostTimeRemaining += JumpsEngine.PowerupDuration;
+					break;
+
+				case JumpsOnlinePickupType.Magnet:
+					player.MagnetActive = true;
+					player.MagnetTimeRemaining += JumpsEngine.PowerupDuration;
+					break;
+
+				case JumpsOnlinePickupType.DoubleJump:
+					if (player.DoubleJumpActive)
+					{
+						player.DoubleJumpTimeRemaining += JumpsEngine.PowerupDuration;
+					}
+					else
+					{
+						player.DoubleJumpActive = true;
+						player.DoubleJumpTimeRemaining = JumpsEngine.PowerupDuration;
+					}
+
+					player.AirJumpsRemaining = JumpsEngine.ExtraAirJumpsPerUse;
+					break;
+
+				case JumpsOnlinePickupType.SlowScroll:
+					// This player shows the ring…
+					player.SlowScrollActive = true;
+					player.SlowScrollTimeRemaining += JumpsEngine.PowerupDuration;
+					// …but in SimulateRunning we slow scroll for EVERYONE if ANY player has it.
+					break;
+			}
+		}
+
+
 
 		private void UpdateLevel(JumpsOnlineRoomState state)
 		{
@@ -635,7 +1092,7 @@ namespace GameServer
 					return;
 
 				if (state.Phase == JumpsOnlinePhase.Lobby ||
-				    state.Phase == JumpsOnlinePhase.Finished)
+					state.Phase == JumpsOnlinePhase.Finished)
 				{
 					state.Phase = JumpsOnlinePhase.Countdown;
 					state.CountdownSecondsRemaining = CountdownDuration;

@@ -11,6 +11,7 @@ using GameContracts;
 using System.Windows.Media;
 using System.Windows.Controls;
 using System.ComponentModel;
+using System.IO;
 using System.Reflection;
 
 namespace GameClient.Wpf
@@ -83,14 +84,22 @@ namespace GameClient.Wpf
 
 			foreach (var type in gameClientTypes)
 			{
-				// Create instance
-				if (Activator.CreateInstance(type) is IGameClient client)
+				try
 				{
-					// Use the GameType property as the key
-					_gameClients[client.GameType] = client;
+					// Create instance
+					if (Activator.CreateInstance(type) is IGameClient client)
+					{
+						// Use the GameType property as the key
+						_gameClients[client.GameType] = client;
 
-					// Wire up shared connection hooks (even if offline games ignore them)
-					client.SetConnection(SendMessageAsync, IsSocketOpen);
+						// Wire up shared connection hooks (even if offline games ignore them)
+						client.SetConnection(SendMessageAsync, IsSocketOpen);
+					}
+				}
+				catch (Exception ex)
+				{
+					// This prevents a single bad client from killing the whole app
+					Log($"Failed to create game client {type.FullName}: {ex}");
 				}
 			}
 		}
@@ -244,48 +253,74 @@ namespace GameClient.Wpf
 
 
 		private async Task ReceiveLoop()
+{
+	var buffer = new byte[4 * 1024];
+
+	try
+	{
+		while (_socket != null && _socket.State == WebSocketState.Open)
 		{
-			var buffer = new byte[4 * 1024];
+			using var ms = new MemoryStream();
 
-			try
+			WebSocketReceiveResult result;
+			do
 			{
-				while (_socket != null && _socket.State == WebSocketState.Open)
-				{
-					var result = await _socket.ReceiveAsync(buffer, CancellationToken.None);
-					if (result.MessageType == WebSocketMessageType.Close)
-					{
-						Log("Server closed connection.");
-						break;
-					}
+				result = await _socket.ReceiveAsync(
+					new ArraySegment<byte>(buffer),
+					CancellationToken.None);
 
-					var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
-					HandleIncoming(json);
+				if (result.MessageType == WebSocketMessageType.Close)
+				{
+					Log("Server initiated close.");
+					// Optionally acknowledge the close
+					if (_socket.State == WebSocketState.CloseReceived)
+					{
+						await _socket.CloseAsync(
+							WebSocketCloseStatus.NormalClosure,
+							"Closing",
+							CancellationToken.None);
+					}
+					return; // end ReceiveLoop
+				}
+
+				if (result.Count > 0)
+				{
+					ms.Write(buffer, 0, result.Count);
 				}
 			}
-			catch (Exception ex)
-			{
-				Log("Receive error: " + ex.Message);
-			}
-			finally
-			{
-				// Ensure UI reflects disconnected state when loop ends
-				_roomCode = null;
-				_playerId = null;
-				_currentGameType = null;
-				_playerCount = 0;
-				IsConnected = false;
+			while (!result.EndOfMessage);
 
-				UpdateRoomUiState();
+			var jsonBytes = ms.ToArray();
+			var json = Encoding.UTF8.GetString(jsonBytes);
 
-				Dispatcher.Invoke(() =>
-				{
-					RoomStatusText.Text = "Disconnected.";
-					ConnectButton.Content = "Connect";
-					ConnectButton.Background = (Brush)FindResource("Brush.ConnectGreen");
-					GameHost.Content = null;
-				});
-			}
+			HandleIncoming(json);
 		}
+	}
+	catch (Exception ex)
+	{
+		Log("Receive error: " + ex.Message);
+	}
+	finally
+	{
+		// Ensure UI reflects disconnected state when loop ends
+		_roomCode = null;
+		_playerId = null;
+		_currentGameType = null;
+		_playerCount = 0;
+		IsConnected = false;
+
+		UpdateRoomUiState();
+
+		Dispatcher.Invoke(() =>
+		{
+			RoomStatusText.Text = "Disconnected.";
+			ConnectButton.Content = "Connect";
+			ConnectButton.Background = (Brush)FindResource("Brush.ConnectGreen");
+			GameHost.Content = null;
+		});
+	}
+}
+
 
 		private void HandleIncoming(string json)
 		{

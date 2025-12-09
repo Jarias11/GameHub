@@ -29,7 +29,8 @@ var handlers = new Dictionary<GameType, IGameHandler>
 	[GameType.TicTacToe] = new TicTacToeGameHandler(roomManager, clients, syncLock, SendAsync),
 	[GameType.Anagram] = new AnagramGameHandler(roomManager, clients, syncLock, SendAsync),
 	[GameType.Checkers] = new CheckersGameHandler(roomManager, clients, syncLock, SendAsync),
-	[GameType.JumpsOnline] = new JumpsOnlineGameHandler(roomManager, clients, syncLock, rng, SendAsync),	
+	[GameType.JumpsOnline] = new JumpsOnlineGameHandler(roomManager, clients, syncLock, rng, SendAsync),
+	[GameType.WarOnline] = new WarGameHandler(roomManager, clients, syncLock, rng, SendAsync)	
 };
 
 var tickHandlers = handlers.Values.OfType<ITickableGameHandler>().ToList();
@@ -75,31 +76,52 @@ app.Map("/ws", async context =>
 
 	var buffer = new byte[4 * 1024];
 
-	try
+try
+{
+	while (socket.State == WebSocketState.Open)
 	{
-		while (socket.State == WebSocketState.Open)
+		using var ms = new MemoryStream();
+
+		WebSocketReceiveResult result;
+		do
 		{
-			var result = await socket.ReceiveAsync(buffer, CancellationToken.None);
+			result = await socket.ReceiveAsync(
+				new ArraySegment<byte>(buffer), 
+				CancellationToken.None);
+
 			if (result.MessageType == WebSocketMessageType.Close)
-				break;
-
-			var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
-			Console.WriteLine("Received: " + json);
-
-			try
 			{
-				var hubMsg = JsonSerializer.Deserialize<HubMessage>(json);
-				if (hubMsg != null)
-				{
-					await HandleMessageAsync(hubMsg, client);
-				}
+				// Client initiated close
+				await socket.CloseAsync(
+					WebSocketCloseStatus.NormalClosure,
+					"Closing",
+					CancellationToken.None);
+				return;
 			}
-			catch (Exception ex)
+
+			ms.Write(buffer, 0, result.Count);
+		}
+		while (!result.EndOfMessage);
+
+		var jsonBytes = ms.ToArray();
+		var json = Encoding.UTF8.GetString(jsonBytes);
+
+		Console.WriteLine("Received (" + jsonBytes.Length + " bytes): " + json);
+
+		try
+		{
+			var hubMsg = JsonSerializer.Deserialize<HubMessage>(json);
+			if (hubMsg != null)
 			{
-				Console.WriteLine("Error handling message: " + ex.Message);
+				await HandleMessageAsync(hubMsg, client);
 			}
 		}
+		catch (Exception ex)
+		{
+			Console.WriteLine("Error handling message: " + ex.Message);
+		}
 	}
+}
 	finally
 	{
 		Console.WriteLine($"Client disconnected: {client.ClientId}");

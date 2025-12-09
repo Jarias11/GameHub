@@ -609,33 +609,57 @@ namespace GameLogic.SideScroller
 		}
 		private void SpawnPhase3Adds()
 		{
-			// We already spawned 1 robot in Phase2. Add one more, closer to the boss.
-			float left = _arenaButtonX + BlockSize;              // just to the right of the button
-			float right = _boss.X - BlockSize * 2f;              // a bit left of the boss
+			// 🔹 First, remove any existing arena ground enemies (includes the Phase2 robot)
+			RemoveArenaGroundEnemies();
 
-			if (right <= left)
+			// Define the arena span from the player's side to near the boss
+			float arenaLeft = _arenaPlatformMinX + BlockSize * 3f;   // a bit to the right of player start
+			float arenaRight = _boss.X - BlockSize * 2f;             // a bit left of the boss
+
+			if (arenaRight <= arenaLeft)
 				return;
+
+			// Middle of the arena (between player side and boss)
+			float arenaMid = (arenaLeft + arenaRight) * 0.5f;
+
+			// We want:
+			//  - one enemy between player-side and middle
+			//  - one enemy between middle and boss
+			float x1 = (arenaLeft + arenaMid) * 0.5f;   // halfway between left and middle
+			float x2 = (arenaMid + arenaRight) * 0.5f;  // halfway between middle and right
 
 			float enemyWidth = 28f;
 			float enemyHeight = 50f;
 			float enemySpeed = EnemySpeedBlocksPerSecond * BlockSize;
-			float patrolRadiusBlocks = 2f;
+
+			// A slightly tighter patrol radius so they don't run into each other too much
+			float patrolRadiusBlocks = 3f;
 			float patrolRadiusPixels = patrolRadiusBlocks * BlockSize;
 
-			// Place this one roughly midway between button and boss
-			float x = (left + right) * 0.5f;
-
-			var enemy = new Enemy(
-				x: x,
+			// Enemy 1 (between player and middle)
+			var enemy1 = new Enemy(
+				x: x1,
 				footY: GroundY,
 				width: enemyWidth,
 				height: enemyHeight,
-				patrolMinX: x - patrolRadiusPixels,
-				patrolMaxX: x + patrolRadiusPixels,
+				patrolMinX: x1 - patrolRadiusPixels,
+				patrolMaxX: x1 + patrolRadiusPixels,
 				speed: enemySpeed);
 
-			AddEnemy(enemy);
+			// Enemy 2 (between middle and boss)
+			var enemy2 = new Enemy(
+				x: x2,
+				footY: GroundY,
+				width: enemyWidth,
+				height: enemyHeight,
+				patrolMinX: x2 - patrolRadiusPixels,
+				patrolMaxX: x2 + patrolRadiusPixels,
+				speed: enemySpeed);
+
+			AddEnemy(enemy1);
+			AddEnemy(enemy2);
 		}
+
 		private void StartBossDeathSequence()
 		{
 			_bossPhase = BossPhase.Dead;

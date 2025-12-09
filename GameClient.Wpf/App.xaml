@@ -4,6 +4,11 @@
              xmlns:local="clr-namespace:GameClient.Wpf"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-         
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Global theme -->
+                <ResourceDictionary Source="/Themes/GameHubTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
     </Application.Resources>
 </Application>

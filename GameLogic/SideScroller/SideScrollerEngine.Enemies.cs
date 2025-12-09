@@ -500,6 +500,60 @@ namespace GameLogic.SideScroller
 			_enemyLookTimer[oldCount] = 0f;
 			_enemyVelY[oldCount] = 0f;
 		}
+		private void RemoveArenaGroundEnemies()
+		{
+			if (_enemies.Length == 0)
+				return;
+
+			// We treat "arena ground enemies" as those on the ground, within the arena platform X range
+			float minX = _arenaPlatformMinX - BlockSize;   // small padding
+			float maxX = _arenaPlatformMaxX + BlockSize;
+			float minY = GroundY - 1f;
+			float maxY = GroundY + 1f;
+
+			var newEnemies = new List<Enemy>(_enemies.Length);
+			var newDirections = new List<float>(_enemies.Length);
+			var newSees = new List<bool>(_enemies.Length);
+			var newStates = new List<EnemyAIState>(_enemies.Length);
+			var newTimeSinceSeen = new List<float>(_enemies.Length);
+			var newLastSeenX = new List<float>(_enemies.Length);
+			var newLookTimer = new List<float>(_enemies.Length);
+			var newVelY = new List<float>(_enemies.Length);
+
+			for (int i = 0; i < _enemies.Length; i++)
+			{
+				var e = _enemies[i];
+
+				bool isArenaGround =
+					e.FootY >= minY && e.FootY <= maxY &&
+					e.X >= minX && e.X <= maxX;
+
+				if (isArenaGround)
+				{
+					// Skip (we are removing this enemy)
+					continue;
+				}
+
+				newEnemies.Add(e);
+				newDirections.Add(_enemyDirections[i]);
+				newSees.Add(_enemySeesPlayer[i]);
+				newStates.Add(_enemyStates[i]);
+				newTimeSinceSeen.Add(_enemyTimeSinceSeen[i]);
+				newLastSeenX.Add(_enemyLastSeenX[i]);
+				newLookTimer.Add(_enemyLookTimer[i]);
+				newVelY.Add(_enemyVelY[i]);
+			}
+
+			_enemies = newEnemies.ToArray();
+			_enemyDirections = newDirections.ToArray();
+			_enemySeesPlayer = newSees.ToArray();
+			_enemyStates = newStates.ToArray();
+			_enemyTimeSinceSeen = newTimeSinceSeen.ToArray();
+			_enemyLastSeenX = newLastSeenX.ToArray();
+			_enemyLookTimer = newLookTimer.ToArray();
+			_enemyVelY = newVelY.ToArray();
+		}
+
 
 	}
 }

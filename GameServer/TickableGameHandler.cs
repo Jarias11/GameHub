@@ -23,6 +23,12 @@ namespace GameServer
 		protected readonly object _syncLock;
 		protected readonly Random _rng;
 		protected readonly Func<ClientConnection, HubMessage, Task> _sendAsync;
+		private float _broadcastAccumulator = 0f;
+		/// <summary>
+		/// How often we broadcast snapshots to clients (Hz).
+		/// Override in specific handlers if needed.
+		/// </summary>
+		protected virtual float BroadcastRateHz => 30f; // default 30 fps
 
 		// Per-room state for this game type (key = RoomCode)
 		protected readonly Dictionary<string, TState> _rooms = new();
@@ -80,6 +86,17 @@ namespace GameServer
 		{
 			List<(ClientConnection client, HubMessage message)> outgoing;
 
+			// 1) Accumulate time and decide if we should broadcast this frame
+			_broadcastAccumulator += dtSeconds;
+			float broadcastInterval = 1f / BroadcastRateHz;
+			bool shouldBroadcast = false;
+
+			if (_broadcastAccumulator >= broadcastInterval)
+			{
+				_broadcastAccumulator -= broadcastInterval;
+				shouldBroadcast = true;
+			}
+
 			lock (_syncLock)
 			{
 				outgoing = new();
@@ -88,10 +105,13 @@ namespace GameServer
 				{
 					var state = kvp.Value;
 
-					// Let subclass update state (physics, timers, etc.)
-					UpdateState(state,dtSeconds);
+					// Always advance simulation
+					UpdateState(state, dtSeconds);
 
-					// Build state snapshot message
+					// Only build/send snapshots when it's time
+					if (!shouldBroadcast)
+						continue;
+
 					var hubMsg = CreateStateMessage(state);
 
 					// Send to all clients in this room
@@ -108,6 +128,7 @@ namespace GameServer
 				await _sendAsync(client, message);
 			}
 		}
+
 
 		public virtual void OnClientDisconnected(ClientConnection client)
 		{

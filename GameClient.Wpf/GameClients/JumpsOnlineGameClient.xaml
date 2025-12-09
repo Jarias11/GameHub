@@ -27,12 +27,7 @@
 				</Grid.ColumnDefinitions>
 
 				<StackPanel Orientation="Horizontal"
-						>
-					<TextBlock x:Name="RoomText"
-							   Foreground="White"
-							   FontSize="14"
-							   Text="Room: -"/>
-
+							VerticalAlignment="Center">
 					<TextBlock x:Name="PhaseText"
 							   Foreground="White"
 							   FontSize="14"
@@ -47,28 +42,17 @@
 							   Foreground="White"
 							   FontSize="14"
 							   Text="Speed: 0"/>
-
-					<TextBlock x:Name="CountdownText"
-							   Foreground="White"
-							   FontSize="14"
-							   Text="Countdown: -"/>
 				</StackPanel>
 
 				<StackPanel Grid.Column="1"
 							Orientation="Horizontal"
 							HorizontalAlignment="Right"
-							>
+							VerticalAlignment="Center">
 					<Button x:Name="StartButton"
 							Content="Start Round"
 							Margin="4,0"
 							Padding="10,4"
 							Click="StartButton_Click"/>
-
-					<Button x:Name="RestartButton"
-							Content="Restart"
-							Margin="4,0"
-							Padding="10,4"
-							Click="RestartButton_Click"/>
 				</StackPanel>
 			</Grid>
 		</Border>
@@ -79,12 +63,26 @@
 				BorderBrush="#444"
 				BorderThickness="1"
 				CornerRadius="4"
-				Background="#111">
+				Background="#111"
+				MinHeight="600">
 			<Grid>
 				<skia:SKElement x:Name="GameSurface"
 								HorizontalAlignment="Stretch"
 								VerticalAlignment="Stretch"
 								PaintSurface="GameSurface_PaintSurface"/>
+
+				<!-- Big center countdown / GO text -->
+				<TextBlock x:Name="CenterCountdownText"
+						   HorizontalAlignment="Center"
+						   VerticalAlignment="Center"
+						   Foreground="White"
+						   FontSize="72"
+						   FontWeight="Bold"
+						   Text=""
+						   Opacity="0.9"
+						   Visibility="Collapsed"
+						   TextOptions.TextFormattingMode="Display"
+						   TextOptions.TextRenderingMode="Aliased"/>
 			</Grid>
 		</Border>
 
@@ -92,54 +90,67 @@
 		<Border Grid.Row="2"
 				Padding="6"
 				Background="#202020"
-				CornerRadius="4">
+				CornerRadius="4"
+				MinHeight="80">
 			<Grid>
 				<Grid.ColumnDefinitions>
-					<ColumnDefinition Width="2*"/>
 					<ColumnDefinition Width="3*"/>
+					<ColumnDefinition Width="2*"/>
 				</Grid.ColumnDefinitions>
 
-				<StackPanel Orientation="Horizontal"
-							>
-					<StackPanel>
+				<!-- Spread P1/P2/P3 evenly across the left side -->
+				<UniformGrid Grid.Column="0"
+							 Rows="1"
+							 Columns="3"
+							 Margin="8,0,16,0">
+					<StackPanel HorizontalAlignment="Center">
 						<TextBlock Text="P1"
 								   Foreground="#66A3FF"
 								   FontWeight="Bold"
-								   FontSize="13"/>
+								   FontSize="13"
+								   HorizontalAlignment="Center"/>
 						<TextBlock x:Name="P1CoinsText"
 								   Foreground="White"
-								   Text="Coins: -"/>
+								   Text="Coins: -"
+								   HorizontalAlignment="Center"/>
 						<TextBlock x:Name="P1StateText"
 								   Foreground="White"
-								   Text="State: -"/>
+								   Text="State: -"
+								   HorizontalAlignment="Center"/>
 					</StackPanel>
 
-					<StackPanel>
+					<StackPanel HorizontalAlignment="Center">
 						<TextBlock Text="P2"
 								   Foreground="#7DFF7D"
 								   FontWeight="Bold"
-								   FontSize="13"/>
+								   FontSize="13"
+								   HorizontalAlignment="Center"/>
 						<TextBlock x:Name="P2CoinsText"
 								   Foreground="White"
-								   Text="Coins: -"/>
+								   Text="Coins: -"
+								   HorizontalAlignment="Center"/>
 						<TextBlock x:Name="P2StateText"
 								   Foreground="White"
-								   Text="State: -"/>
+								   Text="State: -"
+								   HorizontalAlignment="Center"/>
 					</StackPanel>
 
-					<StackPanel>
+					<StackPanel HorizontalAlignment="Center">
 						<TextBlock Text="P3"
 								   Foreground="#FF80FF"
 								   FontWeight="Bold"
-								   FontSize="13"/>
+								   FontSize="13"
+								   HorizontalAlignment="Center"/>
 						<TextBlock x:Name="P3CoinsText"
 								   Foreground="White"
-								   Text="Coins: -"/>
+								   Text="Coins: -"
+								   HorizontalAlignment="Center"/>
 						<TextBlock x:Name="P3StateText"
 								   Foreground="White"
-								   Text="State: -"/>
+								   Text="State: -"
+								   HorizontalAlignment="Center"/>
 					</StackPanel>
-				</StackPanel>
+				</UniformGrid>
 
 				<TextBlock x:Name="StatusText"
 						   Grid.Column="1"
@@ -147,7 +158,9 @@
 						   VerticalAlignment="Center"
 						   Foreground="White"
 						   FontSize="14"
-						   Text="Waiting in lobby..."/>
+						   Text="Waiting in lobby..."
+						   TextWrapping="Wrap"
+						   TextAlignment="Right"/>
 			</Grid>
 		</Border>
 	</Grid>

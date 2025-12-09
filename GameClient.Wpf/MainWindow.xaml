@@ -9,13 +9,6 @@
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource AppBackgroundGradient}">
 
-        <Window.Resources>
-                <ResourceDictionary>
-                        <ResourceDictionary.MergedDictionaries>
-                                <ResourceDictionary Source="/Themes/GameHubTheme.xaml"/>
-                        </ResourceDictionary.MergedDictionaries>
-                </ResourceDictionary>
-        </Window.Resources>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled">
@@ -386,7 +379,7 @@
                                                         </StackPanel>
 
 
-                                                        <!-- Card Games (placeholders for now) -->
+                                                        <!-- Card Games -->
                                                         <StackPanel Margin="0,0,0,0">
                                                                 <Grid Margin="0,8,0,4">
                                                                         <Grid.ColumnDefinitions>
@@ -420,29 +413,59 @@
                                                                                    VerticalAlignment="Center"
                                                                                    Fill="#20294A"/>
                                                                 </Grid>
-                                                                <UniformGrid Columns="3"
-                                                                             Margin="0,6,0,0"
-                                                                             HorizontalAlignment="Stretch">
-                                                                        <Border Style="{StaticResource GameCard}">
-                                                                                <TextBlock Text="Coming soon"
-                                                                                           VerticalAlignment="Center"
-                                                                                           HorizontalAlignment="Center"
-                                                                                           Foreground="{StaticResource Brush.TextSecondary}"/>
-                                                                        </Border>
-                                                                        <Border Style="{StaticResource GameCard}">
-                                                                                <TextBlock Text="Coming soon"
-                                                                                           VerticalAlignment="Center"
-                                                                                           HorizontalAlignment="Center"
-                                                                                           Foreground="{StaticResource Brush.TextSecondary}"/>
-                                                                        </Border>
-                                                                        <Border Style="{StaticResource GameCard}">
-                                                                                <TextBlock Text="Coming soon"
-                                                                                           VerticalAlignment="Center"
-                                                                                           HorizontalAlignment="Center"
-                                                                                           Foreground="{StaticResource Brush.TextSecondary}"/>
-                                                                        </Border>
-                                                                </UniformGrid>
+
+                                                                <ItemsControl ItemsSource="{Binding CardGames}">
+                                                                        <ItemsControl.ItemsPanel>
+                                                                                <ItemsPanelTemplate>
+                                                                                        <UniformGrid Columns="3"
+                                                                                                     Margin="0,6,0,0"
+                                                                                                     HorizontalAlignment="Stretch"/>
+                                                                                </ItemsPanelTemplate>
+                                                                        </ItemsControl.ItemsPanel>
+
+                                                                        <ItemsControl.ItemTemplate>
+                                                                                <DataTemplate>
+                                                                                        <Border Style="{StaticResource GameCard}"
+                                                                                                MouseLeftButtonUp="GameCard_MouseLeftButtonUp">
+                                                                                                <Grid>
+                                                                                                        <Grid.RowDefinitions>
+                                                                                                                <RowDefinition Height="Auto"/>
+                                                                                                                <RowDefinition Height="Auto"/>
+                                                                                                                <RowDefinition Height="Auto"/>
+                                                                                                                <RowDefinition Height="*"/>
+                                                                                                                <RowDefinition Height="Auto"/>
+                                                                                                        </Grid.RowDefinitions>
+
+                                                                                                        <TextBlock Grid.Row="0"
+                                                                                                                   Text="{Binding Emoji}"
+                                                                                                                   FontSize="18"
+                                                                                                                   Margin="0,0,0,4"/>
+
+                                                                                                        <TextBlock Grid.Row="1"
+                                                                                                                   Text="{Binding Name}"
+                                                                                                                   Style="{StaticResource GameCardTitle}"/>
+
+                                                                                                        <TextBlock Grid.Row="2"
+                                                                                                                   Text="{Binding Tagline}"
+                                                                                                                   Style="{StaticResource GameCardSubtitle}"/>
+
+                                                                                                        <TextBlock Grid.Row="3"
+                                                                                                                   Text="{Binding PlayersText}"
+                                                                                                                   Style="{StaticResource GameCardMeta}"
+                                                                                                                   Margin="0,6,0,0"/>
+
+                                                                                                        <TextBlock Grid.Row="4"
+                                                                                                                   Text="Click to create room →"
+                                                                                                                   Style="{StaticResource GameCardMeta}"
+                                                                                                                   Margin="0,8,0,0"
+                                                                                                                   Foreground="{StaticResource Brush.AccentCyan}"/>
+                                                                                                </Grid>
+                                                                                        </Border>
+                                                                                </DataTemplate>
+                                                                        </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
                                                         </StackPanel>
+
 
                                                 </StackPanel>
                                         </StackPanel>
@@ -452,7 +475,7 @@
                                                 x:Name="CurrentGameGroupBox"
                                                 Grid.Row="2"
                                                 Style="{StaticResource NeonGroupBox}"
-                                                MinHeight="300">
+                                                MinHeight="400">
                                                 <GroupBox.Header>
                                                         <Grid>
                                                                 <Grid.ColumnDefinitions>

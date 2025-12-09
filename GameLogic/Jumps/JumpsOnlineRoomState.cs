@@ -185,6 +185,11 @@ namespace GameLogic.JumpsOnline
 		public float JumpBufferRemaining { get; set; }
 		public int AirJumpsRemaining { get; set; }
 
+		// NEW: platform tracking for landing / drop-through
+	public JumpsOnlinePlatformRuntime? CurrentPlatform { get; set; }
+	public JumpsOnlinePlatformRuntime? DropThroughPlatform { get; set; }
+	public float DropThroughTimer { get; set; }
+
 		/// <summary>Coins collected this round.</summary>
 		public int Coins { get; set; }
 

@@ -7,12 +7,12 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using GameClient.Wpf;          // <- for IGameClient
+using GameClient.Wpf.ClientServices;   // <-- NEW: for InputService
 using GameContracts;
 using SkiaSharp;
 using SkiaSharp.Views.WPF;
 using SkiaSharp.Views.Desktop;
 using GameLogic.Jumps;
-
 
 namespace GameClient.Wpf.GameClients
 {
@@ -31,11 +31,12 @@ namespace GameClient.Wpf.GameClients
 		private string? _roomCode;
 		private string? _playerId;
 
-		// Input state (driven by MainWindow → OnKeyDown/OnKeyUp)
-		private bool _leftHeld;
-		private bool _rightHeld;
-		private bool _downHeld;
-		private bool _jumpHeld;
+		// Last input we actually sent (for change detection)
+		private bool _lastLeft;
+		private bool _lastRight;
+		private bool _lastDown;
+		private bool _lastJump;
+		private DateTime _lastSentInputTime = DateTime.MinValue;
 
 		private readonly DispatcherTimer _inputTimer;
 
@@ -59,6 +60,9 @@ namespace GameClient.Wpf.GameClients
 
 		private void OnLoaded(object sender, RoutedEventArgs e)
 		{
+			// Clear any stale keys from a previous screen
+			InputService.Clear();
+
 			// MainWindow will forward key events, so we don't need Focus hacks,
 			// but grabbing focus doesn't hurt.
 			Focus();
@@ -68,6 +72,7 @@ namespace GameClient.Wpf.GameClients
 		private void OnUnloaded(object? sender, RoutedEventArgs e)
 		{
 			_inputTimer.Stop();
+			InputService.Clear();
 		}
 
 		public void SetConnection(Func<HubMessage, Task> sendAsync, Func<bool> isSocketOpen)
@@ -86,11 +91,9 @@ namespace GameClient.Wpf.GameClients
 				// Not in a room anymore
 				_snapshot = null;
 
-				RoomText.Text = "Room: -";
 				PhaseText.Text = "Phase: Lobby";
 				LevelText.Text = "Level: 1";
 				ScrollSpeedText.Text = "Speed: 0";
-				CountdownText.Text = "Countdown: -";
 				StatusText.Text = "Not in a room.";
 
 				P1CoinsText.Text = "Coins: -";
@@ -104,7 +107,6 @@ namespace GameClient.Wpf.GameClients
 			}
 			else
 			{
-				RoomText.Text = $"Room: {roomCode}";
 				StatusText.Text = $"Joined as {playerId}";
 			}
 		}
@@ -113,59 +115,33 @@ namespace GameClient.Wpf.GameClients
 		{
 			if (msg.MessageType == "JumpsOnlineSnapshot")
 			{
-				HandleSnapshot(msg.PayloadJson);
+				if (!Dispatcher.CheckAccess())
+				{
+					Dispatcher.BeginInvoke(new Action(() =>
+					{
+						HandleSnapshot(msg.PayloadJson);
+					}));
+				}
+				else
+				{
+					HandleSnapshot(msg.PayloadJson);
+				}
+
 				return true;
 			}
 
 			return false;
 		}
 
+		// These now just forward to InputService.
 		public void OnKeyDown(KeyEventArgs e)
 		{
-			switch (e.Key)
-			{
-				case Key.Left:
-				case Key.A:
-					_leftHeld = true;
-					break;
-				case Key.Right:
-				case Key.D:
-					_rightHeld = true;
-					break;
-				case Key.Down:
-				case Key.S:
-					_downHeld = true;
-					break;
-				case Key.Space:
-				case Key.W:
-				case Key.Up:
-					_jumpHeld = true;
-					break;
-			}
+			InputService.OnKeyDown(e.Key);
 		}
 
 		public void OnKeyUp(KeyEventArgs e)
 		{
-			switch (e.Key)
-			{
-				case Key.Left:
-				case Key.A:
-					_leftHeld = false;
-					break;
-				case Key.Right:
-				case Key.D:
-					_rightHeld = false;
-					break;
-				case Key.Down:
-				case Key.S:
-					_downHeld = false;
-					break;
-				case Key.Space:
-				case Key.W:
-				case Key.Up:
-					_jumpHeld = false;
-					break;
-			}
+			InputService.OnKeyUp(e.Key);
 		}
 
 		// ==== Snapshot handling =============================================
@@ -190,11 +166,10 @@ namespace GameClient.Wpf.GameClients
 			PhaseText.Text = $"Phase: {snapshot.Phase}";
 			LevelText.Text = $"Level: {snapshot.Level}";
 			ScrollSpeedText.Text = $"Speed: {snapshot.ScrollSpeed:F1}";
-			CountdownText.Text = snapshot.Phase == JumpsOnlinePhase.Countdown
-				? $"Countdown: {snapshot.CountdownSecondsRemaining:F1}"
-				: "Countdown: -";
-
+			
 			UpdatePlayerInfo(snapshot);
+
+
 
 			switch (snapshot.Phase)
 			{
@@ -215,6 +190,31 @@ namespace GameClient.Wpf.GameClients
 					else
 						StatusText.Text = "Round over.";
 					break;
+			}
+			// Big center countdown / GO overlay
+			if (snapshot.Phase == JumpsOnlinePhase.Countdown)
+			{
+				CenterCountdownText.Visibility = Visibility.Visible;
+
+				float t = snapshot.CountdownSecondsRemaining;
+				string label;
+
+				// 3.. 2.. 1.. GO!
+				if (t > 2.0f)
+					label = "3";
+				else if (t > 1.0f)
+					label = "2";
+				else if (t > 0.2f)
+					label = "1";
+				else
+					label = "GO!";
+
+				CenterCountdownText.Text = label;
+			}
+			else
+			{
+				CenterCountdownText.Visibility = Visibility.Collapsed;
+				CenterCountdownText.Text = "";
 			}
 
 			GameSurface.InvalidateVisual();
@@ -273,13 +273,58 @@ namespace GameClient.Wpf.GameClients
 			if (string.IsNullOrEmpty(_roomCode))
 				return;
 
+			if (_snapshot == null)
+				return;
+
+			// Only send while countdown or running
+			if (_snapshot.Phase != JumpsOnlinePhase.Running &&
+				_snapshot.Phase != JumpsOnlinePhase.Countdown)
+			{
+				return;
+			}
+
+			// Read current input from InputService
+			bool left =
+				InputService.IsHeld(Key.A) ||
+				InputService.IsHeld(Key.Left);
+
+			bool right =
+				InputService.IsHeld(Key.D) ||
+				InputService.IsHeld(Key.Right);
+
+			bool down =
+				InputService.IsHeld(Key.S) ||
+				InputService.IsHeld(Key.Down);
+
+			bool jump =
+				InputService.IsHeld(Key.Space) ||
+				InputService.IsHeld(Key.W) ||
+				InputService.IsHeld(Key.Up);
+
+			// Has the input actually changed since last send?
+			bool changed =
+				left != _lastLeft ||
+				right != _lastRight ||
+				down != _lastDown ||
+				jump != _lastJump;
+
+			// Heartbeat: always send at least every 200ms while active
+			var now = DateTime.UtcNow;
+			bool heartbeatDue = (now - _lastSentInputTime).TotalMilliseconds >= 200;
+
+			if (!changed && !heartbeatDue)
+			{
+				// Nothing new to report, skip sending
+				return;
+			}
+
 			var payload = new JumpsOnlineInputPayload
 			{
-				Left = _leftHeld,
-				Right = _rightHeld,
-				Down = _downHeld,
-				JumpHeld = _jumpHeld,
-				Sequence = 0 // you can increment this later
+				Left = left,
+				Right = right,
+				Down = down,
+				JumpHeld = jump,
+				Sequence = 0
 			};
 
 			var msg = new HubMessage
@@ -293,10 +338,16 @@ namespace GameClient.Wpf.GameClients
 			try
 			{
 				await _sendAsync(msg);
+
+				// update "last sent" cache
+				_lastLeft = left;
+				_lastRight = right;
+				_lastDown = down;
+				_lastJump = jump;
+				_lastSentInputTime = now;
 			}
 			catch
 			{
-				// ignore for now
 			}
 		}
 
@@ -400,6 +451,7 @@ namespace GameClient.Wpf.GameClients
 
 			DrawPlatforms(canvas, _snapshot);
 			DrawPlayers(canvas, _snapshot);
+			DrawPowerupRings(canvas, _snapshot);
 
 			canvas.Restore();
 		}
@@ -415,22 +467,61 @@ namespace GameClient.Wpf.GameClients
 				Color = new SKColor(90, 90, 130)
 			};
 
-			using var coinPaint = new SKPaint
-			{
-				IsAntialias = true,
-				Color = new SKColor(255, 215, 0)
-			};
+			using var coinPaint = new SKPaint { IsAntialias = true, Color = SKColors.Gold };
+			using var jumpPaint = new SKPaint { IsAntialias = true, Color = SKColors.MediumPurple };
+			using var speedPaint = new SKPaint { IsAntialias = true, Color = SKColors.LimeGreen };
+			using var magnetPaint = new SKPaint { IsAntialias = true, Color = SKColors.Red };
+			using var doublePaint = new SKPaint { IsAntialias = true, Color = SKColors.SaddleBrown };
+			using var slowPaint = new SKPaint { IsAntialias = true, Color = SKColors.Cyan };
 
 			foreach (var plat in snapshot.Platforms)
 			{
+				// draw platform
 				canvas.DrawRect(plat.X, plat.Y, plat.Width, plat.Height, platPaint);
 
-				if (plat.Pickup is { Collected: false } pickup &&
-					pickup.Type == JumpsOnlinePickupType.Coin)
+				var pickup = plat.Pickup;
+				if (pickup == null || pickup.Collected)
+					continue;
+
+				float cx, cy;
+
+				if (pickup.IsMagnetPulling && (pickup.X != 0f || pickup.Y != 0f))
 				{
-					float r = JumpsEngine.PickupRadius;
-					canvas.DrawCircle(pickup.X, pickup.Y, r, coinPaint);
+					// later the server can animate magnet pulls here
+					cx = pickup.X;
+					cy = pickup.Y;
 				}
+				else
+				{
+					// same layout as single-player JumpsEngine
+					cx = plat.X + plat.Width / 2f;
+					cy = plat.Y - JumpsEngine.PickupRadius - 2f;
+				}
+
+				SKPaint paintToUse = coinPaint;
+				switch (pickup.Type)
+				{
+					case JumpsOnlinePickupType.Coin:
+						paintToUse = coinPaint;
+						break;
+					case JumpsOnlinePickupType.JumpBoost:
+						paintToUse = jumpPaint;
+						break;
+					case JumpsOnlinePickupType.SpeedBoost:
+						paintToUse = speedPaint;
+						break;
+					case JumpsOnlinePickupType.Magnet:
+						paintToUse = magnetPaint;
+						break;
+					case JumpsOnlinePickupType.DoubleJump:
+						paintToUse = doublePaint;
+						break;
+					case JumpsOnlinePickupType.SlowScroll:
+						paintToUse = slowPaint;
+						break;
+				}
+
+				canvas.DrawCircle(cx, cy, JumpsEngine.PickupRadius, paintToUse);
 			}
 		}
 
@@ -476,6 +567,108 @@ namespace GameClient.Wpf.GameClients
 				string label = $"{p.PlayerId} ({p.Coins})";
 				float textWidth = textPaint.MeasureText(label);
 				canvas.DrawText(label, p.X + size / 2f - textWidth / 2f, p.Y - 4f, textPaint);
+			}
+		}
+
+		private void DrawPowerupRings(SKCanvas canvas, JumpsOnlineSnapshotPayload snapshot)
+		{
+			foreach (var p in snapshot.Players)
+			{
+				float size = JumpsEngine.PlayerSize;
+				float cx = p.X + size / 2f;
+				float cy = p.Y + size / 2f;
+
+				float Clamp01(float v) => v < 0f ? 0f : (v > 1f ? 1f : v);
+
+				// Jump boost
+				if (p.JumpBoostActive && p.JumpBoostTimeRemaining > 0f)
+				{
+					float frac = Clamp01(p.JumpBoostTimeRemaining / JumpsEngine.PowerupDuration);
+					float sweep = 360f * frac;
+
+					using var paint = new SKPaint
+					{
+						Color = SKColors.MediumPurple,
+						IsAntialias = true,
+						Style = SKPaintStyle.Stroke,
+						StrokeWidth = 2.5f
+					};
+					float r = size * 0.9f;
+					var rect = new SKRect(cx - r, cy - r, cx + r, cy + r);
+					canvas.DrawArc(rect, -90f, sweep, false, paint);
+				}
+
+				// Speed boost
+				if (p.SpeedBoostActive && p.SpeedBoostTimeRemaining > 0f)
+				{
+					float frac = Clamp01(p.SpeedBoostTimeRemaining / JumpsEngine.PowerupDuration);
+					float sweep = 360f * frac;
+
+					using var paint = new SKPaint
+					{
+						Color = SKColors.LimeGreen,
+						IsAntialias = true,
+						Style = SKPaintStyle.Stroke,
+						StrokeWidth = 2.5f
+					};
+					float r = size * 0.7f;
+					var rect = new SKRect(cx - r, cy - r, cx + r, cy + r);
+					canvas.DrawArc(rect, -90f, sweep, false, paint);
+				}
+
+				// Magnet
+				if (p.MagnetActive && p.MagnetTimeRemaining > 0f)
+				{
+					float frac = Clamp01(p.MagnetTimeRemaining / JumpsEngine.PowerupDuration);
+					float sweep = 360f * frac;
+
+					using var paint = new SKPaint
+					{
+						Color = SKColors.Red,
+						IsAntialias = true,
+						Style = SKPaintStyle.Stroke,
+						StrokeWidth = 2.5f
+					};
+					float r = JumpsEngine.MagnetRadiusWorld;
+					var rect = new SKRect(cx - r, cy - r, cx + r, cy + r);
+					canvas.DrawArc(rect, -90f, sweep, false, paint);
+				}
+
+				// Double jump
+				if (p.DoubleJumpActive && p.DoubleJumpTimeRemaining > 0f)
+				{
+					float frac = Clamp01(p.DoubleJumpTimeRemaining / JumpsEngine.PowerupDuration);
+					float sweep = 360f * frac;
+
+					using var paint = new SKPaint
+					{
+						Color = SKColors.SaddleBrown,
+						IsAntialias = true,
+						Style = SKPaintStyle.Stroke,
+						StrokeWidth = 2.5f
+					};
+					float r = size * 0.5f;
+					var rect = new SKRect(cx - r, cy - r, cx + r, cy + r);
+					canvas.DrawArc(rect, -90f, sweep, false, paint);
+				}
+
+				// Slow scroll
+				if (p.SlowScrollActive && p.SlowScrollTimeRemaining > 0f)
+				{
+					float frac = Clamp01(p.SlowScrollTimeRemaining / JumpsEngine.PowerupDuration);
+					float sweep = 360f * frac;
+
+					using var paint = new SKPaint
+					{
+						Color = SKColors.Cyan,
+						IsAntialias = true,
+						Style = SKPaintStyle.Stroke,
+						StrokeWidth = 2.5f
+					};
+					float r = size * 1.1f;
+					var rect = new SKRect(cx - r, cy - r, cx + r, cy + r);
+					canvas.DrawArc(rect, -90f, sweep, false, paint);
+				}
 			}
 		}
 
