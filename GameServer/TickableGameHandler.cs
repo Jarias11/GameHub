@@ -24,6 +24,9 @@ namespace GameServer
 		protected readonly Random _rng;
 		protected readonly Func<ClientConnection, HubMessage, Task> _sendAsync;
 		private float _broadcastAccumulator = 0f;
+		private float _simAccumulator = 0f;
+		private const float SimStep = 1f / 120f;    // 120 Hz logic step
+		private const int MaxStepsPerTick = 4;      // avoid spiral-of-death
 		/// <summary>
 		/// How often we broadcast snapshots to clients (Hz).
 		/// Override in specific handlers if needed.
@@ -84,18 +87,52 @@ namespace GameServer
 		/// </summary>
 		public async Task TickAsync(float dtSeconds)
 		{
-			List<(ClientConnection client, HubMessage message)> outgoing;
+			if (dtSeconds > 0.1f)
+				dtSeconds = 0.1f; // a bit looser cap now that we sub-step
 
-			// 1) Accumulate time and decide if we should broadcast this frame
-			_broadcastAccumulator += dtSeconds;
-			float broadcastInterval = 1f / BroadcastRateHz;
-			bool shouldBroadcast = false;
+			_simAccumulator += dtSeconds;
 
-			if (_broadcastAccumulator >= broadcastInterval)
+			var steps = 0;
+			while (_simAccumulator >= SimStep && steps < MaxStepsPerTick)
 			{
-				_broadcastAccumulator -= broadcastInterval;
-				shouldBroadcast = true;
+				_simAccumulator -= SimStep;
+				steps++;
+
+				StepSimulationForAllRooms(SimStep);
 			}
+
+			// use the *real* dt for broadcast timing, not SimStep
+			await BroadcastSnapshotsIfNeeded(dtSeconds);
+		}
+
+		private void StepSimulationForAllRooms(float stepDt)
+		{
+			List<TState> states;
+
+			// 🔹 take a snapshot of the states under lock
+			lock (_syncLock)
+			{
+				states = _rooms.Values.ToList();
+			}
+
+			// 🔹 then simulate OUTSIDE the lock
+			foreach (var state in states)
+			{
+				UpdateState(state, stepDt);
+			}
+		}
+
+		private async Task BroadcastSnapshotsIfNeeded(float dtSeconds)
+		{
+			_broadcastAccumulator += dtSeconds;
+			var broadcastInterval = 1f / BroadcastRateHz;
+
+			if (_broadcastAccumulator < broadcastInterval)
+				return;
+
+			_broadcastAccumulator -= broadcastInterval;
+
+			List<(ClientConnection client, HubMessage message)> outgoing;
 
 			lock (_syncLock)
 			{
@@ -104,29 +141,30 @@ namespace GameServer
 				foreach (var kvp in _rooms)
 				{
 					var state = kvp.Value;
-
-					// Always advance simulation
-					UpdateState(state, dtSeconds);
-
-					// Only build/send snapshots when it's time
-					if (!shouldBroadcast)
-						continue;
-
 					var hubMsg = CreateStateMessage(state);
 
-					// Send to all clients in this room
-					foreach (var c in _clients.Where(c => c.RoomCode == state.RoomCode).ToList())
+					for (int i = 0; i < _clients.Count; i++)
 					{
-						outgoing.Add((c, hubMsg));
+						var c = _clients[i];
+						if (c.RoomCode == state.RoomCode)
+						{
+							outgoing.Add((c, hubMsg));
+						}
 					}
 				}
 			}
 
-			// Actually send outside the lock
-			foreach (var (client, message) in outgoing)
+			if (outgoing.Count == 0)
+				return;
+
+			var tasks = new Task[outgoing.Count];
+			for (int i = 0; i < outgoing.Count; i++)
 			{
-				await _sendAsync(client, message);
+				var (client, message) = outgoing[i];
+				tasks[i] = _sendAsync(client, message);
 			}
+
+			await Task.WhenAll(tasks);
 		}
 
 

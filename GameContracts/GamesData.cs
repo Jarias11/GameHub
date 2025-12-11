@@ -27,7 +27,9 @@ public enum GameType
 	JumpsOnline,
 	SideScroller,
 	War,
-	WarOnline
+	WarOnline,
+	Blackjack,
+	Tetris
 }
 
 public class GameInfo
@@ -159,6 +161,26 @@ public static class GameCatalog
 			PlayersText = "2 Players",
 			IsOnline = true
 		},
+		new()
+		{
+			Type = GameType.Blackjack,
+			Name = "Blackjack",
+			Category = GameCategory.Card,
+			Emoji = "🃏",
+			Tagline ="Dont bust!",
+			PlayersText = "4 Players",
+			IsOnline = true
+		},
+		new()
+		{
+			Type = GameType.Tetris,
+			Name = "Tetris",
+			Category = GameCategory.Arcade,
+			Emoji = "🧱",
+			Tagline ="Stack the blocks",
+			PlayersText = "1 Player (offline)",
+			IsOnline = false
+		}
 	};
 
 	public static GameInfo? Get(GameType type) =>

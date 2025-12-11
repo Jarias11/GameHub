@@ -25,6 +25,24 @@ namespace GameClient.Wpf.GameClients
 		private Func<HubMessage, Task>? _sendAsync;
 		private Func<bool>? _isSocketOpen;
 
+		// ==== Snake game state ===============================================
+
+		private readonly DispatcherTimer _timer = new();
+
+		private const int Rows = 20;
+		private const int Cols = 40;
+		private const double CellSize = 20.0; // logical size; Skia will scale
+
+		private readonly LinkedList<(int x, int y)> _snake = new();
+		private (int x, int y) _direction = (1, 0); // moving right
+		private (int x, int y) _food;
+		private bool _isAlive;
+		private readonly Random _rng = new();
+
+		private int _score;
+
+		private (int x, int y)? _nextDirection; // buffered direction for the next tick
+
 		public SnakeGameClient()
 		{
 			InitializeComponent();
@@ -137,23 +155,7 @@ namespace GameClient.Wpf.GameClients
 			}
 		}
 
-		// ==== Snake game state ===============================================
 
-		private readonly DispatcherTimer _timer = new();
-
-		private const int Rows = 20;
-		private const int Cols = 40;
-		private const double CellSize = 20.0; // logical size; Skia will scale
-
-		private readonly LinkedList<(int x, int y)> _snake = new();
-		private (int x, int y) _direction = (1, 0); // moving right
-		private (int x, int y) _food;
-		private bool _isAlive;
-		private readonly Random _rng = new();
-
-		private int _score;
-
-		private (int x, int y)? _nextDirection; // buffered direction for the next tick
 
 		private void ResetGame()
 		{

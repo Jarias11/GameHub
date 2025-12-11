@@ -19,6 +19,7 @@ var roomManager = new RoomManager();
 var clients = new List<ClientConnection>();
 var syncLock = new object();
 var rng = new Random();
+var debugMessages = false;
 
 
 // Register game handlers
@@ -30,7 +31,8 @@ var handlers = new Dictionary<GameType, IGameHandler>
 	[GameType.Anagram] = new AnagramGameHandler(roomManager, clients, syncLock, SendAsync),
 	[GameType.Checkers] = new CheckersGameHandler(roomManager, clients, syncLock, SendAsync),
 	[GameType.JumpsOnline] = new JumpsOnlineGameHandler(roomManager, clients, syncLock, rng, SendAsync),
-	[GameType.WarOnline] = new WarGameHandler(roomManager, clients, syncLock, rng, SendAsync)	
+	[GameType.WarOnline] = new WarGameHandler(roomManager, clients, syncLock, rng, SendAsync),
+	[GameType.Blackjack] = new BlackjackGameHandler(roomManager, clients, syncLock, rng, SendAsync),
 };
 
 var tickHandlers = handlers.Values.OfType<ITickableGameHandler>().ToList();
@@ -39,20 +41,40 @@ var tickHandlers = handlers.Values.OfType<ITickableGameHandler>().ToList();
 
 _ = Task.Run(async () =>
 {
+	const int targetMs = 16; // ~60 Hz
 	var stopwatch = Stopwatch.StartNew();
+
 	while (true)
 	{
 		var dtSeconds = (float)stopwatch.Elapsed.TotalSeconds;
 		stopwatch.Restart();
 
-		foreach (var handler in tickHandlers)
-		{
-			await handler.TickAsync(dtSeconds);   // <-- pass dt
-		}
+		// Don't over-clamp here if you're already handling inside handlers
+		if (dtSeconds > 0.25f)
+			dtSeconds = 0.25f;
 
-		await Task.Delay(16); // ~60 FPS
+		var frameStart = Stopwatch.GetTimestamp();
+
+		// Tick all handlers in parallel
+		var tasks = new Task[tickHandlers.Count];
+		for (int i = 0; i < tickHandlers.Count; i++)
+		{
+			tasks[i] = tickHandlers[i].TickAsync(dtSeconds);
+		}
+		await Task.WhenAll(tasks);
+
+		var nowTicks = Stopwatch.GetTimestamp();
+		var elapsedMs = (int)((nowTicks - frameStart) * 1000.0 / Stopwatch.Frequency);
+
+		var delay = targetMs - elapsedMs;
+		if (delay > 0)
+		{
+			await Task.Delay(delay);
+		}
+		// if delay <= 0, next iteration runs immediately
 	}
 });
+
 
 // ── WebSocket endpoint ───────────────────────────────────────────────────────
 
@@ -75,53 +97,55 @@ app.Map("/ws", async context =>
 	Console.WriteLine($"Client connected: {client.ClientId}");
 
 	var buffer = new byte[4 * 1024];
+	using var ms = new MemoryStream();   // <- move this OUTSIDE the loop
 
-try
-{
-	while (socket.State == WebSocketState.Open)
+	try
 	{
-		using var ms = new MemoryStream();
-
-		WebSocketReceiveResult result;
-		do
+		while (socket.State == WebSocketState.Open)
 		{
-			result = await socket.ReceiveAsync(
-				new ArraySegment<byte>(buffer), 
-				CancellationToken.None);
+			ms.SetLength(0);  // <- reuse existing stream
 
-			if (result.MessageType == WebSocketMessageType.Close)
+			WebSocketReceiveResult result;
+			do
 			{
-				// Client initiated close
-				await socket.CloseAsync(
-					WebSocketCloseStatus.NormalClosure,
-					"Closing",
+				result = await socket.ReceiveAsync(
+					new ArraySegment<byte>(buffer),
 					CancellationToken.None);
-				return;
+
+				if (result.MessageType == WebSocketMessageType.Close)
+				{
+					await socket.CloseAsync(
+						WebSocketCloseStatus.NormalClosure,
+						"Closing",
+						CancellationToken.None);
+					return;
+				}
+
+				ms.Write(buffer, 0, result.Count);
 			}
+			while (!result.EndOfMessage);
 
-			ms.Write(buffer, 0, result.Count);
-		}
-		while (!result.EndOfMessage);
+			var jsonBytes = ms.GetBuffer().AsSpan(0, (int)ms.Length);
+			var json = Encoding.UTF8.GetString(jsonBytes);
 
-		var jsonBytes = ms.ToArray();
-		var json = Encoding.UTF8.GetString(jsonBytes);
+			if (debugMessages)
+				Console.WriteLine($"Received {jsonBytes.Length} bytes");
 
-		Console.WriteLine("Received (" + jsonBytes.Length + " bytes): " + json);
-
-		try
-		{
-			var hubMsg = JsonSerializer.Deserialize<HubMessage>(json);
-			if (hubMsg != null)
+			try
 			{
-				await HandleMessageAsync(hubMsg, client);
+				var hubMsg = JsonSerializer.Deserialize<HubMessage>(json);
+				if (hubMsg != null)
+				{
+					await HandleMessageAsync(hubMsg, client);
+				}
 			}
-		}
-		catch (Exception ex)
-		{
-			Console.WriteLine("Error handling message: " + ex.Message);
+			catch (Exception ex)
+			{
+				Console.WriteLine("Error handling message: " + ex.Message);
+			}
 		}
 	}
-}
+
 	finally
 	{
 		Console.WriteLine($"Client disconnected: {client.ClientId}");

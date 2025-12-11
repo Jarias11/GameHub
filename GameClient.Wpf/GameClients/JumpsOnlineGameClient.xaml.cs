@@ -53,7 +53,7 @@ namespace GameClient.Wpf.GameClients
 			// Timer to send input + repaint at ~30 Hz
 			_inputTimer = new DispatcherTimer
 			{
-				Interval = TimeSpan.FromMilliseconds(33)
+				Interval = TimeSpan.FromMilliseconds(16)
 			};
 			_inputTimer.Tick += InputTimer_Tick;
 		}

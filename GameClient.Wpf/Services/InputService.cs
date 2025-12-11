@@ -19,10 +19,17 @@ namespace GameClient.Wpf.ClientServices
 		/// <summary>
 		/// Call this from your UI's KeyDown handler.
 		/// </summary>
-		public static void OnKeyDown(Key key)
+		public static bool OnKeyDown(Key key)
 		{
-			_heldKeys.Add(key);
+			// HashSet.Add returns true only if the key was NOT already present
+		bool isNewPress = _heldKeys.Add(key);
+
+		if (isNewPress)
+		{
 			_lastPressedKey = key;
+		}
+
+		return isNewPress;
 		}
 
 		/// <summary>

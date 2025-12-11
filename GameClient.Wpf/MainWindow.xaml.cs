@@ -253,73 +253,73 @@ namespace GameClient.Wpf
 
 
 		private async Task ReceiveLoop()
-{
-	var buffer = new byte[4 * 1024];
-
-	try
-	{
-		while (_socket != null && _socket.State == WebSocketState.Open)
 		{
-			using var ms = new MemoryStream();
+			var buffer = new byte[4 * 1024];
 
-			WebSocketReceiveResult result;
-			do
+			try
 			{
-				result = await _socket.ReceiveAsync(
-					new ArraySegment<byte>(buffer),
-					CancellationToken.None);
-
-				if (result.MessageType == WebSocketMessageType.Close)
+				while (_socket != null && _socket.State == WebSocketState.Open)
 				{
-					Log("Server initiated close.");
-					// Optionally acknowledge the close
-					if (_socket.State == WebSocketState.CloseReceived)
+					using var ms = new MemoryStream();
+
+					WebSocketReceiveResult result;
+					do
 					{
-						await _socket.CloseAsync(
-							WebSocketCloseStatus.NormalClosure,
-							"Closing",
+						result = await _socket.ReceiveAsync(
+							new ArraySegment<byte>(buffer),
 							CancellationToken.None);
-					}
-					return; // end ReceiveLoop
-				}
 
-				if (result.Count > 0)
-				{
-					ms.Write(buffer, 0, result.Count);
+						if (result.MessageType == WebSocketMessageType.Close)
+						{
+							Log("Server initiated close.");
+							// Optionally acknowledge the close
+							if (_socket.State == WebSocketState.CloseReceived)
+							{
+								await _socket.CloseAsync(
+									WebSocketCloseStatus.NormalClosure,
+									"Closing",
+									CancellationToken.None);
+							}
+							return; // end ReceiveLoop
+						}
+
+						if (result.Count > 0)
+						{
+							ms.Write(buffer, 0, result.Count);
+						}
+					}
+					while (!result.EndOfMessage);
+
+					var jsonBytes = ms.ToArray();
+					var json = Encoding.UTF8.GetString(jsonBytes);
+
+					HandleIncoming(json);
 				}
 			}
-			while (!result.EndOfMessage);
+			catch (Exception ex)
+			{
+				Log("Receive error: " + ex.Message);
+			}
+			finally
+			{
+				// Ensure UI reflects disconnected state when loop ends
+				_roomCode = null;
+				_playerId = null;
+				_currentGameType = null;
+				_playerCount = 0;
+				IsConnected = false;
 
-			var jsonBytes = ms.ToArray();
-			var json = Encoding.UTF8.GetString(jsonBytes);
+				UpdateRoomUiState();
 
-			HandleIncoming(json);
+				Dispatcher.Invoke(() =>
+				{
+					RoomStatusText.Text = "Disconnected.";
+					ConnectButton.Content = "Connect";
+					ConnectButton.Background = (Brush)FindResource("Brush.ConnectGreen");
+					GameHost.Content = null;
+				});
+			}
 		}
-	}
-	catch (Exception ex)
-	{
-		Log("Receive error: " + ex.Message);
-	}
-	finally
-	{
-		// Ensure UI reflects disconnected state when loop ends
-		_roomCode = null;
-		_playerId = null;
-		_currentGameType = null;
-		_playerCount = 0;
-		IsConnected = false;
-
-		UpdateRoomUiState();
-
-		Dispatcher.Invoke(() =>
-		{
-			RoomStatusText.Text = "Disconnected.";
-			ConnectButton.Content = "Connect";
-			ConnectButton.Background = (Brush)FindResource("Brush.ConnectGreen");
-			GameHost.Content = null;
-		});
-	}
-}
 
 
 		private void HandleIncoming(string json)
@@ -721,6 +721,25 @@ namespace GameClient.Wpf
 				_gameClients.TryGetValue(_currentGameType.Value, out var gc))
 			{
 				gc.OnKeyDown(e);
+				// If we're in a game, prevent WPF/ScrollViewer from also using these keys
+				switch (e.Key)
+				{
+					case Key.Left:
+					case Key.Right:
+					case Key.Up:
+					case Key.Down:
+					case Key.A:
+					case Key.D:
+					case Key.W:
+					case Key.S:
+					case Key.Space:
+					case Key.Tab:
+					case Key.LeftShift:
+					case Key.RightShift:
+					case Key.CapsLock:
+						e.Handled = true;
+						break;
+				}
 			}
 		}
 
@@ -730,6 +749,24 @@ namespace GameClient.Wpf
 				_gameClients.TryGetValue(_currentGameType.Value, out var gc))
 			{
 				gc.OnKeyUp(e);
+				switch (e.Key)
+				{
+					case Key.Left:
+					case Key.Right:
+					case Key.Up:
+					case Key.Down:
+					case Key.A:
+					case Key.D:
+					case Key.W:
+					case Key.S:
+					case Key.Space:
+					case Key.Tab:
+					case Key.LeftShift:
+					case Key.RightShift:
+					case Key.CapsLock:
+						e.Handled = true;
+						break;
+				}
 			}
 		}
 

@@ -8,6 +8,32 @@
   <ItemGroup>
     <PackageReference Include="SkiaSharp" Version="3.119.1" />
     <PackageReference Include="SkiaSharp.Views.WPF" Version="3.119.1" />
+
+
+
+  <!-- Include sound as Content and copy to bin folder -->
+  <Content Include="Assets\Sounds\Tetris\BGM.wav">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+  </Content>
+  <Content Include="Assets\Sounds\Tetris\LevelUp.wav">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+  </Content>
+  <Content Include="Assets\Sounds\Tetris\PlacePiece.wav">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+  </Content>
+  <Content Include="Assets\Sounds\Tetris\RotatePiece.wav">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+  </Content>
+  <Content Include="Assets\Sounds\Tetris\RowClear.wav">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+  </Content>
+  <Content Include="Assets\Sounds\Tetris\TetrisClear.wav">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+  </Content>
+  <Content Include="Assets\Sounds\Tetris\MovePiece.wav">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+  </Content>
+
   </ItemGroup>
 
   <PropertyGroup>
@@ -15,9 +41,9 @@
     <TargetFramework>net9.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyVersion>1.0.0.5</AssemblyVersion>
-  <FileVersion>1.0.0.5</FileVersion>
-  <Version>1.0.0.5</Version>
+    <AssemblyVersion>1.0.0.6</AssemblyVersion>
+  <FileVersion>1.0.0.6</FileVersion>
+  <Version>1.0.0.6</Version>
     <UseWPF>true</UseWPF>
   </PropertyGroup>
 

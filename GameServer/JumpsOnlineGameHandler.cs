@@ -13,6 +13,8 @@ namespace GameServer
 {
 	public sealed class JumpsOnlineGameHandler : TickableGameHandler<JumpsOnlineRoomState>
 	{
+		protected override float BroadcastRateHz => 60f;
+
 		private const float CountdownDuration = 3f;
 		private const float MagnetPullSpeed = 260f; // tweak to taste
 
@@ -162,6 +164,9 @@ namespace GameServer
 					return;
 
 				case JumpsOnlinePhase.Countdown:
+					// NEW: let players move/jump during countdown, but no scroll yet
+					SimulateCountdown(state, dtSeconds);
+
 					state.CountdownSecondsRemaining -= dtSeconds;
 					if (state.CountdownSecondsRemaining <= 0f)
 					{
@@ -181,6 +186,145 @@ namespace GameServer
 					return;
 			}
 		}
+		/// <summary>
+		/// Countdown phase: players can move & jump to get into position,
+		/// but the world does NOT scroll yet (ScrollSpeed = 0, level stays at 1).
+		/// </summary>
+		private void SimulateCountdown(JumpsOnlineRoomState state, float dt)
+		{
+			if (state.Players.Count == 0)
+				return;
+
+			// No scrolling during countdown
+			state.ScrollSpeed = 0f;
+
+			// Optional: tick powerups so any leftover timers still behave
+			TickPowerupTimers(state, dt);
+
+			// Use a baseline horizontal speed (feels like early-game)
+			float baselineScrollForSpeed = JumpsEngine.BaseScrollSpeed;
+
+			// 1) Horizontal movement + jump/double-jump per player
+			foreach (var p in state.Players)
+			{
+				if (!p.IsAlive)
+					continue;
+
+				var input = GetLatestInput(state, p.PlayerId);
+
+				// Direction: -1, 0, +1
+				float dir = 0f;
+				if (input.Left && !input.Right) dir = -1f;
+				else if (input.Right && !input.Left) dir = 1f;
+
+				float baseMoveSpeed = ComputeMoveSpeed(state, baselineScrollForSpeed);
+				float moveSpeed = baseMoveSpeed;
+
+				// SpeedBoost only for this player (if any are active)
+				if (p.SpeedBoostActive && p.SpeedBoostTimeRemaining > 0f)
+				{
+					moveSpeed *= JumpsEngine.SpeedBoostMultiplier;
+				}
+
+				p.X += dir * moveSpeed * dt;
+				if (p.X < 0f) p.X = 0f;
+				if (p.X > JumpsEngine.WorldWidth - p.Width)
+					p.X = JumpsEngine.WorldWidth - p.Width;
+
+				// ─────────────────────────────────────
+				// Jump input: edge + variable jump
+				// ─────────────────────────────────────
+				bool prevJumpHeld = GetLastJumpHeld(state, p.PlayerId);
+				bool justPressedJump = input.JumpHeld && !prevJumpHeld;
+				bool justReleasedJump = !input.JumpHeld && prevJumpHeld;
+				SetLastJumpHeld(state, p.PlayerId, input.JumpHeld);
+
+				// Jump / Double-jump (same rules as Running)
+				if (justPressedJump && p.IsGrounded)
+				{
+					// Hold Down + Jump to drop through
+					if (input.Down && p.CurrentPlatform != null)
+					{
+						StartDropThrough(p);
+					}
+					else
+					{
+						StartJump(state, p);
+					}
+				}
+				else if (justPressedJump && !p.IsGrounded &&
+						 p.DoubleJumpActive && p.DoubleJumpTimeRemaining > 0f &&
+						 p.AirJumpsRemaining > 0)
+				{
+					UseAirJump(state, p);
+				}
+
+				// Short-hop (jump cut) if released while still rising
+				if (justReleasedJump && p.VY < 0f && !p.JumpCutApplied)
+				{
+					const float jumpCutFactor = 0.35f;
+					p.VY *= jumpCutFactor;
+					p.JumpCutApplied = true;
+				}
+			}
+
+			// 2) NO vertical scroll here – world stays still until Running
+			//    (no state.GroundY += scroll, no plat.Y += scroll, no p.Y += scroll)
+
+			// 3) Gravity + landing + death checks
+			foreach (var p in state.Players)
+			{
+				if (!p.IsAlive)
+					continue;
+
+				float prevY = p.Y;
+				float prevBottom = prevY + p.Height;
+
+				p.VY += JumpsEngine.Gravity * dt;
+				p.Y += p.VY * dt;
+
+				if (p.VY >= 0f)
+					p.IsJumping = false;
+
+				float bottom = p.Y + p.Height;
+
+				if (p.VY > 0f)
+				{
+					TryLandOnPlatform(state, p, prevBottom, bottom);
+				}
+
+				// You *can* die during countdown if you somehow fall off,
+				// but that's probably rare. If you don't want that, you can
+				// comment this block out.
+				if (bottom > JumpsEngine.WorldHeight + JumpsEngine.DeathMargin)
+				{
+					if (p.IsAlive)
+					{
+						p.IsAlive = false;
+						state.AlivePlayerCount--;
+					}
+				}
+			}
+
+			// 4) Magnet effects and pickup collisions still work
+			UpdateMagnetPulls(state, dt);
+
+			foreach (var p in state.Players)
+			{
+				if (!p.IsAlive)
+					continue;
+
+				CheckPickupCollisions(state, p);
+			}
+
+			// 5) Row recycling still allowed (in case you ever extend countdown),
+			// but since nothing scrolls, it basically does nothing after initial fill.
+			RecycleAndSpawnRows(state);
+
+			// NOTE: we deliberately DO NOT call UpdateLevel(state) here,
+			// so Level stays 1 for the entire countdown.
+		}
+
 
 		private void SimulateRunning(JumpsOnlineRoomState state, float dt)
 		{
@@ -600,24 +744,78 @@ namespace GameServer
 
 			float segment = JumpsEngine.WorldWidth / (count + 1);
 
+			// Pick “bottom-ish” platforms to use as spawn anchors
+			// (rows close to the ground so it feels like level 1)
+			float maxY = state.GroundY;
+			float minY = state.GroundY - JumpsEngine.RowSpacing * 2f; // bottom 2 rows above ground
+
+			var candidatePlatforms = state.Platforms
+				.Where(p => p.Y <= maxY && p.Y >= minY)
+				.ToList();
+
 			for (int i = 0; i < count; i++)
 			{
 				var p = state.Players[i];
 
-				p.X = segment * (i + 1) - JumpsEngine.PlayerSize / 2f;
-				p.Y = state.GroundY - JumpsEngine.PlayerSize;
+				// Desired horizontal lane for this player
+				float desiredCenterX = segment * (i + 1);
+
+				JumpsOnlinePlatformRuntime? bestPlat = null;
+				float bestDist = float.MaxValue;
+
+				// Find platform whose center is closest to this lane
+				foreach (var plat in candidatePlatforms)
+				{
+					float platCenterX = plat.X + plat.Width / 2f;
+					float dist = MathF.Abs(platCenterX - desiredCenterX);
+					if (dist < bestDist)
+					{
+						bestDist = dist;
+						bestPlat = plat;
+					}
+				}
+
+				if (bestPlat != null)
+				{
+					// Snap player ONTO the platform
+					float platCenterX = bestPlat.X + bestPlat.Width / 2f;
+
+					p.X = platCenterX - JumpsEngine.PlayerSize / 2f;
+					p.Y = bestPlat.Y - JumpsEngine.PlayerSize;
+
+					p.CurrentPlatform = bestPlat;
+					p.IsGrounded = true;
+				}
+				else
+				{
+					// Fallback: old behavior (stand on "ground")
+					p.X = segment * (i + 1) - JumpsEngine.PlayerSize / 2f;
+					p.Y = state.GroundY - JumpsEngine.PlayerSize;
+
+					p.CurrentPlatform = null;
+					p.IsGrounded = true;
+				}
+
 				p.VX = 0f;
 				p.VY = 0f;
-				p.IsGrounded = true;
 				p.HasStarted = false;
 				p.IsAlive = true;
 				p.Coins = 0;
 
-				// NEW
-				p.CurrentPlatform = null;
 				p.DropThroughPlatform = null;
 				p.DropThroughTimer = 0f;
 				p.AirJumpsRemaining = 0;
+
+				p.JumpBoostActive = false;
+				p.JumpBoostTimeRemaining = 0f;
+				p.SpeedBoostActive = false;
+				p.SpeedBoostTimeRemaining = 0f;
+				p.MagnetActive = false;
+				p.MagnetTimeRemaining = 0f;
+				p.DoubleJumpActive = false;
+				p.DoubleJumpTimeRemaining = 0f;
+				p.SlowScrollActive = false;
+				p.SlowScrollTimeRemaining = 0f;
 			}
 
 			state.AlivePlayerCount = count;
