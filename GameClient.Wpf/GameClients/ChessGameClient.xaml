@@ -1,0 +1,268 @@
+<UserControl x:Class="GameClient.Wpf.GameClients.ChessGameClient"
+			 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+			 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+			 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+			 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+			 xmlns:skia="clr-namespace:SkiaSharp.Views.WPF;assembly=SkiaSharp.Views.WPF"
+			 mc:Ignorable="d"
+			 d:DesignHeight="600"
+			 d:DesignWidth="900">
+
+	<Grid>
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="*"/>
+		</Grid.RowDefinitions>
+
+		<!-- Header / Controls -->
+		<StackPanel Grid.Row="0"
+					Orientation="Horizontal"
+					Margin="10"
+					VerticalAlignment="Center">
+			<TextBlock Text="Chess (Online)"
+					   FontSize="20"
+					   FontWeight="Bold"
+					   Margin="0,0,16,0"/>
+			<TextBlock x:Name="StatusText"
+					   Text="Waiting for color choice..."
+					   Foreground="Gray"
+					   VerticalAlignment="Center"
+					   Margin="0,0,16,0"/>
+
+			<!-- Spacer -->
+			<StackPanel Width="20"/>
+
+			<Button Content="Flip Board"
+					Padding="8,4"
+					Click="OnFlipBoardClicked"/>
+		</StackPanel>
+
+		<!-- Main content: left = board area, right = move history -->
+		<Grid Grid.Row="1"
+			  Margin="10">
+			<Grid.ColumnDefinitions>
+				<ColumnDefinition Width="*"/>
+				<ColumnDefinition Width="260"/>
+			</Grid.ColumnDefinitions>
+
+			<!-- Left side: players + board -->
+			<Grid Grid.Column="0">
+				<Grid.RowDefinitions>
+					<RowDefinition Height="Auto"/>
+					<RowDefinition Height="*"/>
+					<RowDefinition Height="Auto"/>
+				</Grid.RowDefinitions>
+
+				<!-- Top player / captured (Opponent) -->
+				<Border Grid.Row="0"
+						Margin="0,0,0,8"
+						Padding="8"
+						CornerRadius="4"
+						Background="#202020">
+					<Grid>
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="Auto"/>
+							<ColumnDefinition Width="*"/>
+						</Grid.ColumnDefinitions>
+
+						<TextBlock x:Name="TopPlayerLabel"
+								   Text="Opponent"
+								   FontWeight="Bold"
+								   Foreground="White"
+								   VerticalAlignment="Center"/>
+
+						<StackPanel Grid.Column="1"
+									x:Name="WhiteCapturedPanel"
+									Orientation="Horizontal"
+									HorizontalAlignment="Right"
+									VerticalAlignment="Center"/>
+					</Grid>
+				</Border>
+
+				<!-- Skia board area -->
+				<Border Grid.Row="1"
+						Background="#101010"
+						CornerRadius="4">
+					<skia:SKElement x:Name="SkiaView"
+									PaintSurface="OnPaintSurface"
+									Focusable="True"
+									MinHeight="600"
+									MinWidth="600"/>
+				</Border>
+
+				<!-- Bottom player / captured (You) -->
+				<Border Grid.Row="2"
+						Margin="0,8,0,0"
+						Padding="8"
+						CornerRadius="4"
+						Background="#202020">
+					<Grid>
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="Auto"/>
+							<ColumnDefinition Width="*"/>
+						</Grid.ColumnDefinitions>
+
+						<TextBlock x:Name="BottomPlayerLabel"
+								   Text="You"
+								   FontWeight="Bold"
+								   Foreground="White"
+								   VerticalAlignment="Center"/>
+
+						<StackPanel Grid.Column="1"
+									x:Name="BlackCapturedPanel"
+									Orientation="Horizontal"
+									HorizontalAlignment="Right"
+									VerticalAlignment="Center"/>
+					</Grid>
+				</Border>
+			</Grid>
+
+			<!-- Right side: Move history -->
+			<Border Grid.Column="1"
+					Margin="12,0,0,0"
+					Padding="8"
+					Background="#151515"
+					CornerRadius="4">
+				<DockPanel>
+
+					<TextBlock Text="Move History"
+							   DockPanel.Dock="Top"
+							   FontWeight="Bold"
+							   Foreground="White"
+							   Margin="0,0,0,8"/>
+
+					<!-- NEW: bottom controls area -->
+					<Border DockPanel.Dock="Bottom"
+							Margin="0,8,0,0"
+							Padding="8"
+							CornerRadius="4"
+							Background="#202020">
+						<StackPanel>
+							<TextBlock Text="Game Controls"
+									   Foreground="LightGray"
+									   FontWeight="SemiBold"
+									   Margin="0,0,0,6"/>
+
+							<Button x:Name="ResignButton"
+									Content="Resign"
+									Click="OnResignClicked"
+									Padding="8,4"/>
+							<Button x:Name="OfferDrawButton"
+									Content="Offer Draw"
+									Click="OnOfferDrawClicked"
+									Padding="8,4"
+									Margin="0,0,0,6"/>
+
+							<StackPanel x:Name="DrawResponsePanel"
+										Orientation="Horizontal"
+										Visibility="Collapsed">
+								<Button x:Name="AcceptDrawButton"
+										Content="Accept"
+										Click="OnAcceptDrawClicked"
+										Padding="8,4"
+										Margin="0,0,6,0"/>
+								<Button x:Name="DeclineDrawButton"
+										Content="Decline"
+										Click="OnDeclineDrawClicked"
+										Padding="8,4"/>
+							</StackPanel>
+						</StackPanel>
+					</Border>
+
+					<ScrollViewer VerticalScrollBarVisibility="Auto">
+						<StackPanel x:Name="MoveHistoryPanel"
+									Orientation="Vertical"
+									Margin="0,0,0,4">
+							<TextBlock Text="No moves yet."
+									   Foreground="Gray"
+									   FontStyle="Italic"/>
+						</StackPanel>
+					</ScrollViewer>
+
+				</DockPanel>
+			</Border>
+
+		</Grid>
+
+		<!-- Game over overlay -->
+		<Border x:Name="GameOverOverlay"
+				Grid.RowSpan="2"
+				Background="#80000000"
+				Visibility="Collapsed">
+			<Grid>
+				<Border Background="#262626"
+						CornerRadius="8"
+						Padding="16"
+						HorizontalAlignment="Center"
+						VerticalAlignment="Center"
+						BorderBrush="#AAAAAA"
+						BorderThickness="1">
+					<StackPanel>
+						<TextBlock x:Name="GameOverText"
+								   Text="White wins!"
+								   FontSize="20"
+								   FontWeight="Bold"
+								   Foreground="White"
+								   HorizontalAlignment="Center"
+								   Margin="0,0,0,12"/>
+
+						<StackPanel Orientation="Horizontal"
+									HorizontalAlignment="Center">
+							<Button Content="Close"
+									Width="80"
+									Margin="0,0,8,0"
+									Click="OnGameOverCloseClicked"/>
+							<Button Content="Restart"
+									Width="80"
+									Click="OnGameOverRestartClicked"/>
+						</StackPanel>
+					</StackPanel>
+				</Border>
+			</Grid>
+		</Border>
+
+		<!-- Initial color-choice overlay -->
+		<Border x:Name="ColorChoiceOverlay"
+				Grid.RowSpan="2"
+				Background="#80000000"
+				Visibility="Collapsed">
+			<Grid>
+				<Border Background="#262626"
+						CornerRadius="8"
+						Padding="16"
+						HorizontalAlignment="Center"
+						VerticalAlignment="Center"
+						BorderBrush="#AAAAAA"
+						BorderThickness="1">
+					<StackPanel>
+						<TextBlock Text="Choose your color"
+								   FontSize="20"
+								   FontWeight="Bold"
+								   Foreground="White"
+								   HorizontalAlignment="Center"
+								   Margin="0,0,0,8"/>
+
+						<TextBlock x:Name="ColorChoiceSubText"
+								   Text="You are Player 1. Pick White or Black."
+								   Foreground="LightGray"
+								   HorizontalAlignment="Center"
+								   Margin="0,0,0,12"/>
+
+						<StackPanel Orientation="Horizontal"
+									HorizontalAlignment="Center">
+							<Button x:Name="ChooseWhiteButton"
+									Content="White"
+									Width="80"
+									Margin="0,0,8,0"
+									Click="OnChooseWhiteClicked"/>
+							<Button x:Name="ChooseBlackButton"
+									Content="Black"
+									Width="80"
+									Click="OnChooseBlackClicked"/>
+						</StackPanel>
+					</StackPanel>
+				</Border>
+			</Grid>
+		</Border>
+	</Grid>
+</UserControl>

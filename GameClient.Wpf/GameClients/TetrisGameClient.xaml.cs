@@ -103,6 +103,10 @@ namespace GameClient.Wpf.GameClients
 				case Key.Escape:
 					TogglePause();
 					break;
+
+				case Key.R:
+					StartNewGame();
+					break;
 			}
 		}
 
@@ -201,6 +205,7 @@ namespace GameClient.Wpf.GameClients
 		private bool _hasHeldThisTurn;
 		private bool _isPaused;
 		private bool _isGameOver;
+		private bool _pieceJustLockedThisTick;
 
 		private int _score;
 		private int _linesCleared;
@@ -642,6 +647,8 @@ namespace GameClient.Wpf.GameClients
 			if (_activePieceId == 0)
 				return;
 
+			_pieceJustLockedThisTick = false;
+
 			double dt = _timer.Interval.TotalMilliseconds;
 
 			UpdateHorizontalMovement(dt);
@@ -768,6 +775,7 @@ namespace GameClient.Wpf.GameClients
 					_fallTimerMs = 0;
 					_lockTimerMs = 0;
 					_isGrounded = false;
+					_pieceJustLockedThisTick = true;
 				}
 			}
 			else if (movedDownThisFrame)
@@ -966,6 +974,7 @@ namespace GameClient.Wpf.GameClients
 			if (!CheckCollisionForActivePiece(_activeRow, newCol, _activeRotation))
 			{
 				_activeCol = newCol;
+				ResetLockDelayAfterMovement();
 				SoundService.PlayTetrisEffect(TetrisSoundEffect.MovePiece);
 			}
 		}
@@ -980,6 +989,7 @@ namespace GameClient.Wpf.GameClients
 			if (!CheckCollisionForActivePiece(_activeRow, newCol, _activeRotation))
 			{
 				_activeCol = newCol;
+				ResetLockDelayAfterMovement();
 				SoundService.PlayTetrisEffect(TetrisSoundEffect.MovePiece);
 			}
 		}
@@ -994,6 +1004,7 @@ namespace GameClient.Wpf.GameClients
 			if (!CheckCollisionForActivePiece(newRow, _activeCol, _activeRotation))
 			{
 				_activeRow = newRow;
+				ResetLockDelayAfterMovement();
 			}
 		}
 
@@ -1050,6 +1061,7 @@ namespace GameClient.Wpf.GameClients
 
 					// 🔊 rotation sound
 					SoundService.PlayTetrisEffect(TetrisSoundEffect.RotatePiece);
+					ResetLockDelayAfterMovement();
 
 					UpdateGhostRow();
 					return;
@@ -1088,6 +1100,7 @@ namespace GameClient.Wpf.GameClients
 
 					// 🔊 rotation sound
 					SoundService.PlayTetrisEffect(TetrisSoundEffect.RotatePiece);
+					ResetLockDelayAfterMovement();
 
 					UpdateGhostRow();
 					return;
@@ -1101,6 +1114,11 @@ namespace GameClient.Wpf.GameClients
 				return;
 
 			if (_hasHeldThisTurn)
+				return;
+			if (_isGrounded)
+				return;
+			// 👇 Prevent weird double-spawn if a lock just occurred this frame
+			if (_pieceJustLockedThisTick)
 				return;
 
 			_hasHeldThisTurn = true;

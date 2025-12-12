@@ -30,6 +30,7 @@ var handlers = new Dictionary<GameType, IGameHandler>
 	[GameType.TicTacToe] = new TicTacToeGameHandler(roomManager, clients, syncLock, SendAsync),
 	[GameType.Anagram] = new AnagramGameHandler(roomManager, clients, syncLock, SendAsync),
 	[GameType.Checkers] = new CheckersGameHandler(roomManager, clients, syncLock, SendAsync),
+	[GameType.Chess] = new ChessGameHandler(roomManager, clients, syncLock, SendAsync),
 	[GameType.JumpsOnline] = new JumpsOnlineGameHandler(roomManager, clients, syncLock, rng, SendAsync),
 	[GameType.WarOnline] = new WarGameHandler(roomManager, clients, syncLock, rng, SendAsync),
 	[GameType.Blackjack] = new BlackjackGameHandler(roomManager, clients, syncLock, rng, SendAsync),
@@ -254,21 +255,9 @@ async Task HandleCreateRoom(HubMessage msg, ClientConnection client)
 				.Where(c => c != client && c.RoomCode == oldRoomCode)
 				.ToList();
 
-			// 🔹 Decide max players based on the NEW room's game type
-			int maxPlayers = room.GameType == GameType.JumpsOnline ? 3 : 2;
-
 			foreach (var other in othersInOldRoom)
 			{
-				// Find an open slot in the new room
-				string? slot = null;
-
-				if (!room.Players.Contains("P1"))
-					slot = "P1";
-				else if (!room.Players.Contains("P2"))
-					slot = "P2";
-				else if (maxPlayers == 3 && !room.Players.Contains("P3"))
-					slot = "P3";
-
+				var slot = FindOpenPlayerSlot(room);
 				if (slot == null)
 				{
 					// new room is full; skip extra watchers if any
@@ -282,6 +271,7 @@ async Task HandleCreateRoom(HubMessage msg, ClientConnection client)
 
 				movedClients.Add(other);
 			}
+
 		}
 
 	}
@@ -423,15 +413,9 @@ async Task HandleJoinRoom(HubMessage msg, ClientConnection client)
 		lock (syncLock)
 		{
 			// 🔹 Figure out max players for this room
-			int maxPlayers = room.GameType == GameType.JumpsOnline ? 3 : 2;
+			slot = FindOpenPlayerSlot(room) ?? "";
 
-			if (!room.Players.Contains("P1"))
-				slot = "P1";
-			else if (!room.Players.Contains("P2"))
-				slot = "P2";
-			else if (maxPlayers == 3 && !room.Players.Contains("P3"))
-				slot = "P3";
-			else
+			if (string.IsNullOrEmpty(slot))
 			{
 				responsePayload = new RoomJoinedPayload
 				{
@@ -440,6 +424,7 @@ async Task HandleJoinRoom(HubMessage msg, ClientConnection client)
 				};
 				goto send;
 			}
+
 
 			roomManager.TryJoinRoom(room.RoomCode, slot, out _);
 			client.RoomCode = room.RoomCode;
@@ -628,6 +613,16 @@ async Task SendAsync(ClientConnection client, HubMessage msg)
 	var json = JsonSerializer.Serialize(msg);
 	var bytes = Encoding.UTF8.GetBytes(json);
 	await client.Socket.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None);
+}
+static string? FindOpenPlayerSlot(Room room)
+{
+	for (int i = 1; i <= room.MaxPlayers; i++)
+	{
+		var slot = $"P{i}";
+		if (!room.Players.Contains(slot))
+			return slot;
+	}
+	return null;
 }
 
 // ── Shared hub-side client type ──────────────────────────────────────────────

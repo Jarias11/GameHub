@@ -8,6 +8,7 @@ public class Room
 	public GameType GameType { get; }
 	public GameCategory Category => GameCatalog.Get(GameType)!.Category;
 
+	public int MaxPlayers { get; }
 	// Just store logical player IDs ("P1", "P2")
 	public List<string> Players { get; } = new();
 
@@ -15,6 +16,7 @@ public class Room
 	{
 		RoomCode = roomCode;
 		GameType = gameType;
+		MaxPlayers = GameCatalog.GetMaxPlayers(gameType);
 	}
 }
 
@@ -39,10 +41,7 @@ public class RoomManager
 		room = null;
 		if (!_rooms.TryGetValue(code, out var r)) return false;
 
-		// 🔹 Decide max players based on game type
-		int maxPlayers = r.GameType == GameType.JumpsOnline ? 3 : 2;
-
-		if (!r.Players.Contains(playerId) && r.Players.Count < maxPlayers)
+		if (!r.Players.Contains(playerId) && r.Players.Count < r.MaxPlayers)
 		{
 			r.Players.Add(playerId);
 		}

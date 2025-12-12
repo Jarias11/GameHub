@@ -33,6 +33,9 @@
   <Content Include="Assets\Sounds\Tetris\MovePiece.wav">
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
   </Content>
+  <Content Include="Assets\Images\Chess\**\*.png">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
 
   </ItemGroup>
 
@@ -41,9 +44,9 @@
     <TargetFramework>net9.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyVersion>1.0.0.6</AssemblyVersion>
-  <FileVersion>1.0.0.6</FileVersion>
-  <Version>1.0.0.6</Version>
+    <AssemblyVersion>1.0.0.7</AssemblyVersion>
+  <FileVersion>1.0.0.7</FileVersion>
+  <Version>1.0.0.7</Version>
     <UseWPF>true</UseWPF>
   </PropertyGroup>
 

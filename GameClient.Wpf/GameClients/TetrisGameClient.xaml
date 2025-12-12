@@ -124,7 +124,7 @@
 								   Margin="0,4,0,16"
 								   HorizontalAlignment="Center"/>
 
-						<TextBlock Text="Press P to start a new game"
+						<TextBlock Text="Press R to start a new game"
 								   FontSize="18"
 								   Foreground="#DDDDDD"
 								   HorizontalAlignment="Center"/>
@@ -280,6 +280,6 @@
 						ValueChanged="SfxVolumeSlider_ValueChanged"/>
 			</StackPanel>
 		</Border>
-
+	
 	</Grid>
 </UserControl>
