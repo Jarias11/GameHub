@@ -34,6 +34,8 @@ var handlers = new Dictionary<GameType, IGameHandler>
 	[GameType.JumpsOnline] = new JumpsOnlineGameHandler(roomManager, clients, syncLock, rng, SendAsync),
 	[GameType.WarOnline] = new WarGameHandler(roomManager, clients, syncLock, rng, SendAsync),
 	[GameType.Blackjack] = new BlackjackGameHandler(roomManager, clients, syncLock, rng, SendAsync),
+	[GameType.Uno] = new UnoGameHandler(roomManager, clients, syncLock, rng, SendAsync),
+
 };
 
 var tickHandlers = handlers.Values.OfType<ITickableGameHandler>().ToList();
@@ -42,37 +44,37 @@ var tickHandlers = handlers.Values.OfType<ITickableGameHandler>().ToList();
 
 _ = Task.Run(async () =>
 {
-	const int targetMs = 16; // ~60 Hz
+	const int targetMs = 16;
 	var stopwatch = Stopwatch.StartNew();
 
 	while (true)
 	{
-		var dtSeconds = (float)stopwatch.Elapsed.TotalSeconds;
-		stopwatch.Restart();
-
-		// Don't over-clamp here if you're already handling inside handlers
-		if (dtSeconds > 0.25f)
-			dtSeconds = 0.25f;
-
-		var frameStart = Stopwatch.GetTimestamp();
-
-		// Tick all handlers in parallel
-		var tasks = new Task[tickHandlers.Count];
-		for (int i = 0; i < tickHandlers.Count; i++)
+		try
 		{
-			tasks[i] = tickHandlers[i].TickAsync(dtSeconds);
+			var dtSeconds = (float)stopwatch.Elapsed.TotalSeconds;
+			stopwatch.Restart();
+			if (dtSeconds > 0.25f) dtSeconds = 0.25f;
+
+			var frameStart = Stopwatch.GetTimestamp();
+
+			var tasks = new Task[tickHandlers.Count];
+			for (int i = 0; i < tickHandlers.Count; i++)
+				tasks[i] = tickHandlers[i].TickAsync(dtSeconds);
+
+			await Task.WhenAll(tasks);
+
+			var nowTicks = Stopwatch.GetTimestamp();
+			var elapsedMs = (int)((nowTicks - frameStart) * 1000.0 / Stopwatch.Frequency);
+
+			var delay = targetMs - elapsedMs;
+			if (delay > 0) await Task.Delay(delay);
 		}
-		await Task.WhenAll(tasks);
-
-		var nowTicks = Stopwatch.GetTimestamp();
-		var elapsedMs = (int)((nowTicks - frameStart) * 1000.0 / Stopwatch.Frequency);
-
-		var delay = targetMs - elapsedMs;
-		if (delay > 0)
+		catch (Exception ex)
 		{
-			await Task.Delay(delay);
+			Console.WriteLine("[TICK LOOP CRASH] " + ex);
+			// keep loop alive
+			await Task.Delay(100);
 		}
-		// if delay <= 0, next iteration runs immediately
 	}
 });
 

@@ -4,53 +4,30 @@
 			 xmlns:skia="clr-namespace:SkiaSharp.Views.WPF;assembly=SkiaSharp.Views.WPF">
 	<Grid Margin="8">
 		<Grid.RowDefinitions>
-			<RowDefinition Height="Auto"/>
-			<RowDefinition Height="Auto"/>
 			<RowDefinition Height="*"/>
 			<RowDefinition Height="Auto"/>
 		</Grid.RowDefinitions>
 
-		<!-- Top status bar -->
-		<StackPanel Grid.Row="0"
-				Orientation="Horizontal"
-				Margin="0,0,0,4">
-			<TextBlock Text="Phase:"
-					FontWeight="Bold"
-					Margin="0,0,4,0"/>
-			<TextBlock x:Name="PhaseText"
-					Margin="0,0,16,0"/>
-			<TextBlock Text="Dealer:"
-					FontWeight="Bold"
-					Margin="0,0,4,0"/>
-			<TextBlock x:Name="DealerText"/>
-		</StackPanel>
+		
 
-		<!-- Player summary line -->
-		<StackPanel Grid.Row="1"
-				Orientation="Horizontal"
-				Margin="0,0,0,4">
-			<TextBlock Text="Players:"
-					FontWeight="Bold"
-					Margin="0,0,4,0"/>
-			<TextBlock x:Name="PlayersSummaryText"/>
-		</StackPanel>
 
 		<!-- Skia surface -->
-		<Border Grid.Row="2"
+		<Border Grid.Row="0"
 				BorderBrush="{DynamicResource Brush.PanelBorder}"
 				BorderThickness="1"
 				CornerRadius="8">
 			<skia:SKElement x:Name="GameSurface"
 							Margin="4"
-							PaintSurface="GameSurface_PaintSurface"/>
+							PaintSurface="GameSurface_PaintSurface"
+							MouseLeftButtonDown="GameSurface_MouseLeftButtonDown"
+							MinHeight="600"/>
 		</Border>
 
 		<!-- Button row -->
-		<StackPanel Grid.Row="3"
-				Orientation="Horizontal"
-				HorizontalAlignment="Center"
-				Margin="0,6,0,0"
-				>
+		<StackPanel Grid.Row="1"
+					Orientation="Horizontal"
+					HorizontalAlignment="Center"
+					Margin="0,6,0,0">
 			<Button x:Name="StartButton"
 					Content="Start Round"
 					Padding="12,4"
@@ -65,6 +42,15 @@
 					Content="Stand"
 					Padding="12,4"
 					Click="StandButton_Click"/>
+			<Button x:Name="SplitButton"
+					Content="Split"
+					Padding="12,4"
+					Click="SplitButton_Click"/>
+			<Button x:Name="BailoutButton"
+					Content="Free 100"
+					Padding="12,4"
+					Visibility="Collapsed"
+					Click="BailoutButton_Click"/>
 
 			<Button x:Name="RestartButton"
 					Content="Restart GameHub Button"

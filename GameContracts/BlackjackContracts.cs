@@ -8,10 +8,11 @@ namespace GameContracts
 	public enum BlackjackPhase
 	{
 		Lobby = 0,        // Waiting for players, host can start
-		Dealing = 1,      // Initial deal animation / state
-		PlayerTurns = 2,  // Players taking turns (Hit/Stand)
-		DealerTurn = 3,   // Dealer drawing their cards
-		RoundResults = 4  // Results visible; host can restart
+		Betting = 1,
+		Dealing = 2,      // Initial deal animation / state
+		PlayerTurns = 3,  // Players taking turns (Hit/Stand)
+		DealerTurn = 4,   // Dealer drawing their cards
+		RoundResults = 5  // Results visible; host can restart
 	}
 
 	/// <summary>
@@ -33,6 +34,7 @@ namespace GameContracts
 	{
 		Hit = 0,
 		Stand = 1,
+		Split = 2
 		// Future: DoubleDown = 2, Split = 3, etc.
 	}
 
@@ -50,6 +52,17 @@ namespace GameContracts
 	}
 
 	/// <summary>
+	/// Player submits their bet for the round.
+	/// MessageType: "BlackjackBetSubmit"
+	/// </summary>
+	public class BlackjackBetSubmitPayload
+	{
+		public string RoomCode { get; set; } = string.Empty;
+		public string PlayerId { get; set; } = string.Empty;
+		public int Bet { get; set; }         // final bet amount
+	}
+
+	/// <summary>
 	/// Player action during their turn.
 	/// MessageType: "BlackjackAction"
 	/// </summary>
@@ -58,6 +71,12 @@ namespace GameContracts
 		public string RoomCode { get; set; } = string.Empty;
 		public string PlayerId { get; set; } = string.Empty;
 		public BlackjackActionType Action { get; set; }
+	}
+
+	public class BlackjackBailoutPayload
+	{
+		public string RoomCode { get; set; } = string.Empty;
+		public string PlayerId { get; set; } = string.Empty;
 	}
 
 	// ─────────────────────────────────────────────────────────────
@@ -85,11 +104,23 @@ namespace GameContracts
 		/// <summary>true if this player is currently connected.</summary>
 		public bool IsConnected { get; set; }
 
+		public bool HasSubmittedBet { get; set; }
+
 		/// <summary>true if this player is still in the current round (not folded/busted entirely).</summary>
 		public bool IsInRound { get; set; }
 
 		/// <summary>true if this is the active player's turn.</summary>
 		public bool IsCurrentTurn { get; set; }
+
+		public bool CanSplit { get; set; }        // server computed (only true on your turn)
+		public bool HasSplit { get; set; }        // did we split this round?
+		public int ActiveHandIndex { get; set; }  // 0 or 1
+
+		// Optional (recommended so UI can draw both hands):
+		public List<BlackjackCardDto> SplitHandCards { get; set; } = new();
+		public int SplitHandValue { get; set; }
+		public bool SplitHandIsBust { get; set; }
+		public bool SplitHandHasStood { get; set; }
 
 		/// <summary>true if the player has chosen Stand.</summary>
 		public bool HasStood { get; set; }
@@ -111,11 +142,19 @@ namespace GameContracts
 
 		/// <summary>The player's cards.</summary>
 		public List<BlackjackCardDto> Cards { get; set; } = new();
+
+		public bool IsLoser { get; set; }      // chips <= 0
+		public bool CanBailout { get; set; }   // show/enable the free-100 button
+
+		public bool IsSeated { get; set; }
+		public bool IsSpectatingThisRound { get; set; }
 	}
 
 	public class BlackjackSnapshotPayload
 	{
 		public string RoomCode { get; set; } = string.Empty;
+		public string?[] SeatPlayerIds { get; set; } = new string?[4];
+
 
 		/// <summary>Overall game phase (Lobby, Dealing, etc.).</summary>
 		public BlackjackPhase Phase { get; set; }
@@ -137,5 +176,10 @@ namespace GameContracts
 
 		/// <summary>True if the round is fully resolved and P1 may restart.</summary>
 		public bool RoundComplete { get; set; }
+	}
+	public class BlackjackSeatSelectPayload
+	{
+		public string RoomCode { get; set; } = string.Empty;
+		public int SeatIndex { get; set; } // 0..3
 	}
 }

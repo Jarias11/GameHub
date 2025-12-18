@@ -229,7 +229,7 @@
 				<TextBlock Text="← / → : Move"
 						   Foreground="#BBBBBB"
 						   Margin="0,2"/>
-				<TextBlock Text="↑ / Shift : Rotate"
+				<TextBlock Text="CapsLock / Shift : Rotate"
 						   Foreground="#BBBBBB"
 						   Margin="0,2"/>
 				<TextBlock Text="↓ : Soft drop"

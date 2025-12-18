@@ -728,11 +728,7 @@ namespace GameClient.Wpf
 					case Key.Right:
 					case Key.Up:
 					case Key.Down:
-					case Key.A:
-					case Key.D:
-					case Key.W:
-					case Key.S:
-					case Key.Space:
+					
 					case Key.Tab:
 					case Key.LeftShift:
 					case Key.RightShift:
@@ -755,11 +751,7 @@ namespace GameClient.Wpf
 					case Key.Right:
 					case Key.Up:
 					case Key.Down:
-					case Key.A:
-					case Key.D:
-					case Key.W:
-					case Key.S:
-					case Key.Space:
+					
 					case Key.Tab:
 					case Key.LeftShift:
 					case Key.RightShift:

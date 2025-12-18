@@ -163,6 +163,18 @@ namespace GameClient.Wpf.GameClients
 		{
 			// No-op for now
 		}
+		private void WordInput_PreviewKeyDown(object sender, KeyEventArgs e)
+		{
+			// If you have any global game shortcuts you want to still work while typing,
+			// handle them here (before TextBox eats the key).
+			//
+			// Example: allow Esc to do something, etc.
+			// if (e.Key == Key.Escape) { ...; e.Handled = true; }
+
+			// IMPORTANT:
+			// Do NOT set e.Handled = true for normal letters,
+			// or you’ll prevent the user from typing.
+		}
 
 		// ── Message handlers ───────────────────────────────────────────────
 
@@ -193,6 +205,16 @@ namespace GameClient.Wpf.GameClients
 				{
 					OptionsPanel.Visibility = Visibility.Collapsed;
 				}
+				if (_playerId == "P1")
+				{
+					P1WordInput.Focus();
+					Keyboard.Focus(P1WordInput);
+				}
+				else if (_playerId == "P2")
+				{
+					P2WordInput.Focus();
+					Keyboard.Focus(P2WordInput);
+				}
 
 				UpdateTimerText(payload.DurationSeconds);
 				_timer.Start();
@@ -201,67 +223,67 @@ namespace GameClient.Wpf.GameClients
 
 		private void HandleWordResult(HubMessage msg)
 		{
-	var payload = JsonSerializer.Deserialize<AnagramWordResultPayload>(msg.PayloadJson);
-	if (payload == null) return;
+			var payload = JsonSerializer.Deserialize<AnagramWordResultPayload>(msg.PayloadJson);
+			if (payload == null) return;
 
-	bool isLocal = msg.PlayerId == _playerId;
+			bool isLocal = msg.PlayerId == _playerId;
 
-	Dispatcher.Invoke(() =>
-	{
-		if (msg.PlayerId == "P1")
-		{
-			// Everyone sees P1's score update
-			_p1Score = payload.NewScore;
-			P1ScoreText.Text = _p1Score.ToString();
-
-			// Only P1 sees their own words + error feedback
-			if (isLocal)
+			Dispatcher.Invoke(() =>
 			{
-				if (payload.Accepted)
+				if (msg.PlayerId == "P1")
 				{
-					_p1Words.Add(payload.Word);
-					ClearInput(P1WordInput);
-				}
-				else
-				{
-					ShowInvalidWordFeedback(P1WordInput, payload.Reason);
-				}
-			}
-		}
-		else if (msg.PlayerId == "P2")
-		{
-			// Everyone sees P2's score update
-			_p2Score = payload.NewScore;
-			P2ScoreText.Text = _p2Score.ToString();
+					// Everyone sees P1's score update
+					_p1Score = payload.NewScore;
+					P1ScoreText.Text = _p1Score.ToString();
 
-			// Only P2 sees their own words + error feedback
-			if (isLocal)
-			{
-				if (payload.Accepted)
-				{
-					_p2Words.Add(payload.Word);
-					ClearInput(P2WordInput);
+					// Only P1 sees their own words + error feedback
+					if (isLocal)
+					{
+						if (payload.Accepted)
+						{
+							_p1Words.Add(payload.Word);
+							ClearInput(P1WordInput);
+						}
+						else
+						{
+							ShowInvalidWordFeedback(P1WordInput, payload.Reason);
+						}
+					}
 				}
-				else
+				else if (msg.PlayerId == "P2")
 				{
-					ShowInvalidWordFeedback(P2WordInput, payload.Reason);
+					// Everyone sees P2's score update
+					_p2Score = payload.NewScore;
+					P2ScoreText.Text = _p2Score.ToString();
+
+					// Only P2 sees their own words + error feedback
+					if (isLocal)
+					{
+						if (payload.Accepted)
+						{
+							_p2Words.Add(payload.Word);
+							ClearInput(P2WordInput);
+						}
+						else
+						{
+							ShowInvalidWordFeedback(P2WordInput, payload.Reason);
+						}
+					}
 				}
-			}
-		}
 
-		if (payload.IsRoundOver)
-		{
-			_roundActive = false;
-			_timer.Stop();
-			StatusText.Text = "Round over.";
-		}
+				if (payload.IsRoundOver)
+				{
+					_roundActive = false;
+					_timer.Stop();
+					StatusText.Text = "Round over.";
+				}
 
-		if (payload.SecondsRemaining >= 0)
-		{
-			UpdateTimerText(payload.SecondsRemaining);
+				if (payload.SecondsRemaining >= 0)
+				{
+					UpdateTimerText(payload.SecondsRemaining);
+				}
+			});
 		}
-	});
-}
 
 		private void HandleRoundSummary(HubMessage msg)
 		{

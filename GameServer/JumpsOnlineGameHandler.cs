@@ -18,6 +18,9 @@ namespace GameServer
 		private const float CountdownDuration = 3f;
 		private const float MagnetPullSpeed = 260f; // tweak to taste
 
+		private readonly List<JumpsOnlinePlatformRuntime> _candidatePlatforms = new();
+
+
 		// Latest input per player (key = "ROOM:PLAYER")
 		private readonly Dictionary<string, JumpsOnlineInputPayload> _latestInputs = new();
 		private readonly Dictionary<string, bool> _lastJumpHeld = new();
@@ -101,6 +104,13 @@ namespace GameServer
 				if (!stillHasPlayers)
 				{
 					_rooms.Remove(client.RoomCode);
+					string prefix = client.RoomCode + ":";
+
+					foreach (var k in _latestInputs.Keys.Where(k => k.StartsWith(prefix)).ToList())
+						_latestInputs.Remove(k);
+
+					foreach (var k in _lastJumpHeld.Keys.Where(k => k.StartsWith(prefix)).ToList())
+						_lastJumpHeld.Remove(k);
 					Console.WriteLine($"[JumpsOnline] Room {client.RoomCode} removed (empty).");
 				}
 			}
@@ -749,9 +759,13 @@ namespace GameServer
 			float maxY = state.GroundY;
 			float minY = state.GroundY - JumpsEngine.RowSpacing * 2f; // bottom 2 rows above ground
 
-			var candidatePlatforms = state.Platforms
-				.Where(p => p.Y <= maxY && p.Y >= minY)
-				.ToList();
+			_candidatePlatforms.Clear();
+			for (int iPlat = 0; iPlat < state.Platforms.Count; iPlat++)
+			{
+				var plat = state.Platforms[iPlat];
+				if (plat.Y <= maxY && plat.Y >= minY)
+					_candidatePlatforms.Add(plat);
+			}
 
 			for (int i = 0; i < count; i++)
 			{
@@ -764,8 +778,9 @@ namespace GameServer
 				float bestDist = float.MaxValue;
 
 				// Find platform whose center is closest to this lane
-				foreach (var plat in candidatePlatforms)
+				for (int j = 0; j < _candidatePlatforms.Count; j++)
 				{
+					var plat = _candidatePlatforms[j];
 					float platCenterX = plat.X + plat.Width / 2f;
 					float dist = MathF.Abs(platCenterX - desiredCenterX);
 					if (dist < bestDist)
@@ -774,6 +789,7 @@ namespace GameServer
 						bestPlat = plat;
 					}
 				}
+
 
 				if (bestPlat != null)
 				{
@@ -826,15 +842,26 @@ namespace GameServer
 			int columns = state.TotalColumns;
 			if (columns <= 0) columns = 3;
 
-			int platformCount = state.Rng.Next(1, 3); // 1 or 2 platforms per row
+			// 1 or 2 platforms
+			int platformCount = state.Rng.Next(1, 3);
 
-			var lanes = Enumerable.Range(0, columns)
-				.OrderBy(_ => state.Rng.Next())
-				.Take(platformCount);
+			// Pick 1–2 unique lanes without LINQ/shuffle allocations
+			int laneA = state.Rng.Next(columns);
+			int laneB = laneA;
+
+			if (platformCount == 2)
+			{
+				// ensure unique
+				while (laneB == laneA)
+					laneB = state.Rng.Next(columns);
+			}
 
 			float laneWidth = JumpsEngine.WorldWidth / columns;
 
-			foreach (int lane in lanes)
+			SpawnLane(laneA);
+			if (platformCount == 2) SpawnLane(laneB);
+
+			void SpawnLane(int lane)
 			{
 				float centerX = laneWidth * (lane + 0.5f);
 				float x = centerX - JumpsEngine.PlatformWidth / 2f;
@@ -849,7 +876,6 @@ namespace GameServer
 				double dj = JumpsEngine.DoubleJumpChance;
 				double ss = JumpsEngine.SlowScrollChance;
 
-				// helper to create a pickup with initial world position
 				JumpsOnlinePickupRuntime NewPickup(JumpsOnlinePickupType type)
 				{
 					return new JumpsOnlinePickupRuntime
@@ -886,6 +912,7 @@ namespace GameServer
 				});
 			}
 		}
+
 
 
 		// ─────────────────────────────────────────────
@@ -1001,7 +1028,13 @@ namespace GameServer
 				return;
 			}
 
-			float minY = state.Platforms.Min(p => p.Y);
+			float minY = float.MaxValue;
+			for (int i = 0; i < state.Platforms.Count; i++)
+			{
+				float y = state.Platforms[i].Y;
+				if (y < minY) minY = y;
+			}
+
 
 			while (minY > -JumpsEngine.RowSpacing * state.BufferRows)
 			{

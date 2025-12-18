@@ -29,7 +29,8 @@ public enum GameType
 	War,
 	WarOnline,
 	Blackjack,
-	Tetris
+	Tetris,
+	Uno
 }
 
 public class GameInfo
@@ -191,6 +192,17 @@ public static class GameCatalog
 			Tagline = "Stack the blocks",
 			PlayersText = "1 Player (offline)",
 			IsOnline = false
+		},
+		new()
+		{
+			Type = GameType.Uno,
+			Name = "UNO",
+			Category = GameCategory.Card,
+			Emoji = "🃏",
+			Tagline = "Classic card game",
+			PlayersText = "2-4 Players",
+			IsOnline = true,
+			MaxPlayers = 4
 		}
 	};
 

@@ -62,11 +62,11 @@
 							  Width="80"
 							  SelectedIndex="0">
 						<ComboBoxItem Content="1:00"
-								Tag="60"/>
+									  Tag="60"/>
 						<ComboBoxItem Content="2:00"
-								Tag="120"/>
+									  Tag="120"/>
 						<ComboBoxItem Content="3:00"
-								Tag="180"/>
+									  Tag="180"/>
 					</ComboBox>
 				</StackPanel>
 
@@ -123,7 +123,7 @@
 
 					<!-- Header -->
 					<DockPanel Grid.Row="0"
-							Margin="0,0,0,4">
+							   Margin="0,0,0,4">
 						<TextBlock Text="Host (P1)"
 								   Style="{StaticResource AnagramPlayerHeader}"/>
 						<TextBlock Text="Score:"
@@ -153,6 +153,7 @@
 								 Width="160"
 								 Margin="0,0,8,0"
 								 Style="{StaticResource AnagramWordInputBox}"
+								 PreviewKeyDown="WordInput_PreviewKeyDown"
 								 KeyDown="WordInput_KeyDown">
 							<TextBox.RenderTransform>
 								<TranslateTransform/>
@@ -179,7 +180,7 @@
 
 					<!-- Header -->
 					<DockPanel Grid.Row="0"
-							Margin="0,0,0,4">
+							   Margin="0,0,0,4">
 						<TextBlock Text="Guest (P2)"
 								   Style="{StaticResource AnagramPlayerHeader}"/>
 						<TextBlock Text="Score:"
@@ -209,6 +210,7 @@
 								 Width="160"
 								 Margin="0,0,8,0"
 								 Style="{StaticResource AnagramWordInputBox}"
+								 PreviewKeyDown="WordInput_PreviewKeyDown"
 								 KeyDown="WordInput_KeyDown">
 							<TextBox.RenderTransform>
 								<TranslateTransform/>

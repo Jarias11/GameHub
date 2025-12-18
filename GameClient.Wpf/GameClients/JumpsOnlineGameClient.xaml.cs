@@ -31,6 +31,8 @@ namespace GameClient.Wpf.GameClients
 		private string? _roomCode;
 		private string? _playerId;
 
+		private bool _skiaDisposed;
+
 		// Last input we actually sent (for change detection)
 		private bool _lastLeft;
 		private bool _lastRight;
@@ -39,6 +41,71 @@ namespace GameClient.Wpf.GameClients
 		private DateTime _lastSentInputTime = DateTime.MinValue;
 
 		private readonly DispatcherTimer _inputTimer;
+
+
+
+		// ==== Skia cached paints (NO per-frame allocations) =========================
+
+		// background/platform paints
+		private readonly SKPaint _bgPaint = new() { Color = new SKColor(15, 15, 40), IsAntialias = false };
+		private readonly SKPaint _platPaint = new() { IsAntialias = true, Color = new SKColor(90, 90, 130) };
+
+		// pickups
+		private readonly SKPaint _coinPaint = new() { IsAntialias = true, Color = SKColors.Gold };
+		private readonly SKPaint _jumpPaint = new() { IsAntialias = true, Color = SKColors.MediumPurple };
+		private readonly SKPaint _speedPaint = new() { IsAntialias = true, Color = SKColors.LimeGreen };
+		private readonly SKPaint _magnetPaint = new() { IsAntialias = true, Color = SKColors.Red };
+		private readonly SKPaint _doublePaint = new() { IsAntialias = true, Color = SKColors.SaddleBrown };
+		private readonly SKPaint _slowPaint = new() { IsAntialias = true, Color = SKColors.Cyan };
+
+
+		// ==== Cached arc rects (avoid recomputing every ring every frame) ===========
+		private readonly SKRect[] _ringRectOuter = new SKRect[3];  // size * 0.9
+		private readonly SKRect[] _ringRectMid = new SKRect[3];  // size * 0.7
+		private readonly SKRect[] _ringRectInner = new SKRect[3];  // size * 0.5
+		private readonly SKRect[] _ringRectSlow = new SKRect[3];  // size * 1.1
+		private readonly SKRect[] _ringRectMagnet = new SKRect[3]; // magnet radius
+
+		private readonly float[] _ringCxCache = new float[3];
+		private readonly float[] _ringCyCache = new float[3];
+		private bool _ringRectsValid;
+
+
+		// ==== Cached HUD/labels to avoid per-frame string allocations ===============
+
+		private readonly string[] _playerLabelCache = new string[3];        // "P1 (12)"
+		private readonly int[] _playerCoinsCache = new int[3] { int.MinValue, int.MinValue, int.MinValue };
+		private readonly string[] _playerIdCache = new string[3];           // "P1"
+
+
+
+		// players + text
+
+
+		private readonly SKPaint _playerFillPaint = new() { IsAntialias = true };
+		private readonly SKPaint _outlinePaint = new()
+		{
+			IsAntialias = true,
+			Color = SKColors.White,
+			Style = SKPaintStyle.Stroke,
+			StrokeWidth = 2f
+		};
+
+		private readonly SKPaint _textPaint = new()
+		{
+			IsAntialias = true,
+			Color = SKColors.White,
+			TextSize = 10
+		};
+
+		// rings (reuse one paint, just swap Color each time)
+		private readonly SKPaint _ringPaint = new()
+		{
+			IsAntialias = true,
+			Style = SKPaintStyle.Stroke,
+			StrokeWidth = 2.5f
+		};
+
 
 		// Last snapshot from server
 		private JumpsOnlineSnapshotPayload? _snapshot;
@@ -73,6 +140,12 @@ namespace GameClient.Wpf.GameClients
 		{
 			_inputTimer.Stop();
 			InputService.Clear();
+
+			if (!_skiaDisposed)
+			{
+				DisposeSkiaResources();
+				_skiaDisposed = true;
+			}
 		}
 
 		public void SetConnection(Func<HubMessage, Task> sendAsync, Func<bool> isSocketOpen)
@@ -162,11 +235,12 @@ namespace GameClient.Wpf.GameClients
 				return;
 
 			_snapshot = snapshot;
+			_ringRectsValid = false; // new snapshot; recalc ring rects on next draw
 
 			PhaseText.Text = $"Phase: {snapshot.Phase}";
 			LevelText.Text = $"Level: {snapshot.Level}";
 			ScrollSpeedText.Text = $"Speed: {snapshot.ScrollSpeed:F1}";
-			
+
 			UpdatePlayerInfo(snapshot);
 
 
@@ -219,6 +293,29 @@ namespace GameClient.Wpf.GameClients
 
 			GameSurface.InvalidateVisual();
 		}
+
+		private string GetCachedPlayerLabel(JumpsOnlinePlayerStateDto p)
+		{
+			// assumes PlayerIndex is 0..2
+			int i = p.PlayerIndex;
+			if (i < 0 || i >= _playerLabelCache.Length)
+			{
+				// fallback for unexpected values
+				return $"{p.PlayerId} ({p.Coins})";
+			}
+
+			// rebuild only if something changed
+			if (!string.Equals(_playerIdCache[i], p.PlayerId, StringComparison.Ordinal) || _playerCoinsCache[i] != p.Coins)
+			{
+				_playerIdCache[i] = p.PlayerId;
+				_playerCoinsCache[i] = p.Coins;
+				_playerLabelCache[i] = string.Concat(p.PlayerId, " (", p.Coins.ToString(), ")");
+			}
+
+			return _playerLabelCache[i];
+		}
+
+
 
 		private void UpdatePlayerInfo(JumpsOnlineSnapshotPayload snapshot)
 		{
@@ -335,20 +432,19 @@ namespace GameClient.Wpf.GameClients
 				PayloadJson = JsonSerializer.Serialize(payload)
 			};
 
-			try
-			{
-				await _sendAsync(msg);
+			// update cache BEFORE sending so UI timing never depends on network
+			_lastLeft = left;
+			_lastRight = right;
+			_lastDown = down;
+			_lastJump = jump;
+			_lastSentInputTime = now;
 
-				// update "last sent" cache
-				_lastLeft = left;
-				_lastRight = right;
-				_lastDown = down;
-				_lastJump = jump;
-				_lastSentInputTime = now;
-			}
-			catch
+			// run send on threadpool; do not block UI thread
+			var send = _sendAsync;
+			_ = Task.Run(async () =>
 			{
-			}
+				try { await send!(msg); } catch { }
+			});
 		}
 
 		// ==== Buttons: Start / Restart ======================================
@@ -443,11 +539,8 @@ namespace GameClient.Wpf.GameClients
 			canvas.Translate(offsetX, offsetY);
 			canvas.Scale(scale, scale);
 
-			// Background
-			using (var bgPaint = new SKPaint { Color = new SKColor(15, 15, 40) })
-			{
-				canvas.DrawRect(0, 0, worldWidth, worldHeight, bgPaint);
-			}
+			// Background (cached paint)
+			canvas.DrawRect(0, 0, worldWidth, worldHeight, _bgPaint);
 
 			DrawPlatforms(canvas, _snapshot);
 			DrawPlayers(canvas, _snapshot);
@@ -461,23 +554,10 @@ namespace GameClient.Wpf.GameClients
 			if (snapshot.Platforms == null || snapshot.Platforms.Count == 0)
 				return;
 
-			using var platPaint = new SKPaint
-			{
-				IsAntialias = true,
-				Color = new SKColor(90, 90, 130)
-			};
-
-			using var coinPaint = new SKPaint { IsAntialias = true, Color = SKColors.Gold };
-			using var jumpPaint = new SKPaint { IsAntialias = true, Color = SKColors.MediumPurple };
-			using var speedPaint = new SKPaint { IsAntialias = true, Color = SKColors.LimeGreen };
-			using var magnetPaint = new SKPaint { IsAntialias = true, Color = SKColors.Red };
-			using var doublePaint = new SKPaint { IsAntialias = true, Color = SKColors.SaddleBrown };
-			using var slowPaint = new SKPaint { IsAntialias = true, Color = SKColors.Cyan };
-
 			foreach (var plat in snapshot.Platforms)
 			{
-				// draw platform
-				canvas.DrawRect(plat.X, plat.Y, plat.Width, plat.Height, platPaint);
+				// draw platform (cached)
+				canvas.DrawRect(plat.X, plat.Y, plat.Width, plat.Height, _platPaint);
 
 				var pickup = plat.Pickup;
 				if (pickup == null || pickup.Collected)
@@ -487,190 +567,151 @@ namespace GameClient.Wpf.GameClients
 
 				if (pickup.IsMagnetPulling && (pickup.X != 0f || pickup.Y != 0f))
 				{
-					// later the server can animate magnet pulls here
 					cx = pickup.X;
 					cy = pickup.Y;
 				}
 				else
 				{
-					// same layout as single-player JumpsEngine
 					cx = plat.X + plat.Width / 2f;
 					cy = plat.Y - JumpsEngine.PickupRadius - 2f;
 				}
 
-				SKPaint paintToUse = coinPaint;
-				switch (pickup.Type)
+				// choose cached paint
+				SKPaint paintToUse = pickup.Type switch
 				{
-					case JumpsOnlinePickupType.Coin:
-						paintToUse = coinPaint;
-						break;
-					case JumpsOnlinePickupType.JumpBoost:
-						paintToUse = jumpPaint;
-						break;
-					case JumpsOnlinePickupType.SpeedBoost:
-						paintToUse = speedPaint;
-						break;
-					case JumpsOnlinePickupType.Magnet:
-						paintToUse = magnetPaint;
-						break;
-					case JumpsOnlinePickupType.DoubleJump:
-						paintToUse = doublePaint;
-						break;
-					case JumpsOnlinePickupType.SlowScroll:
-						paintToUse = slowPaint;
-						break;
-				}
+					JumpsOnlinePickupType.Coin => _coinPaint,
+					JumpsOnlinePickupType.JumpBoost => _jumpPaint,
+					JumpsOnlinePickupType.SpeedBoost => _speedPaint,
+					JumpsOnlinePickupType.Magnet => _magnetPaint,
+					JumpsOnlinePickupType.DoubleJump => _doublePaint,
+					JumpsOnlinePickupType.SlowScroll => _slowPaint,
+					_ => _coinPaint
+				};
 
 				canvas.DrawCircle(cx, cy, JumpsEngine.PickupRadius, paintToUse);
 			}
 		}
+
 
 		private void DrawPlayers(SKCanvas canvas, JumpsOnlineSnapshotPayload snapshot)
 		{
 			if (snapshot.Players == null || snapshot.Players.Count == 0)
 				return;
 
+			float size = JumpsEngine.PlayerSize;
+
 			foreach (var p in snapshot.Players)
 			{
-				var color = GetPlayerColor(p.PlayerIndex);
+				// reuse a single fill paint, just swap its color
+				_playerFillPaint.Color = GetPlayerColor(p.PlayerIndex);
+				canvas.DrawRect(p.X, p.Y, size, size, _playerFillPaint);
 
-				using var paint = new SKPaint
-				{
-					IsAntialias = true,
-					Color = color
-				};
-
-				float size = JumpsEngine.PlayerSize;
-				canvas.DrawRect(p.X, p.Y, size, size, paint);
-
-				// Outline "me"
+				// Outline "me" (cached)
 				if (!string.IsNullOrEmpty(_playerId) && p.PlayerId == _playerId)
 				{
-					using var outline = new SKPaint
-					{
-						IsAntialias = true,
-						Color = SKColors.White,
-						Style = SKPaintStyle.Stroke,
-						StrokeWidth = 2f
-					};
-					canvas.DrawRect(p.X, p.Y, size, size, outline);
+					canvas.DrawRect(p.X, p.Y, size, size, _outlinePaint);
 				}
 
-				// Label (P1/P2/P3 + coins)
-				using var textPaint = new SKPaint
-				{
-					Color = SKColors.White,
-					TextSize = 10,
-					IsAntialias = true
-				};
+				// Label (cached text paint)
+				string label = GetCachedPlayerLabel(p);
+				float textWidth = _textPaint.MeasureText(label);
+				canvas.DrawText(label, p.X + size / 2f - textWidth / 2f, p.Y - 4f, _textPaint);
 
-				string label = $"{p.PlayerId} ({p.Coins})";
-				float textWidth = textPaint.MeasureText(label);
-				canvas.DrawText(label, p.X + size / 2f - textWidth / 2f, p.Y - 4f, textPaint);
 			}
 		}
 
+
 		private void DrawPowerupRings(SKCanvas canvas, JumpsOnlineSnapshotPayload snapshot)
 		{
+			if (snapshot.Players == null || snapshot.Players.Count == 0)
+				return;
+
+			UpdateRingRectsIfNeeded(snapshot);
+
+			static float Clamp01(float v) => v < 0f ? 0f : (v > 1f ? 1f : v);
+
 			foreach (var p in snapshot.Players)
 			{
-				float size = JumpsEngine.PlayerSize;
-				float cx = p.X + size / 2f;
-				float cy = p.Y + size / 2f;
-
-				float Clamp01(float v) => v < 0f ? 0f : (v > 1f ? 1f : v);
+				int i = p.PlayerIndex;
+				if (i < 0 || i >= 3) continue;
 
 				// Jump boost
 				if (p.JumpBoostActive && p.JumpBoostTimeRemaining > 0f)
 				{
-					float frac = Clamp01(p.JumpBoostTimeRemaining / JumpsEngine.PowerupDuration);
-					float sweep = 360f * frac;
-
-					using var paint = new SKPaint
-					{
-						Color = SKColors.MediumPurple,
-						IsAntialias = true,
-						Style = SKPaintStyle.Stroke,
-						StrokeWidth = 2.5f
-					};
-					float r = size * 0.9f;
-					var rect = new SKRect(cx - r, cy - r, cx + r, cy + r);
-					canvas.DrawArc(rect, -90f, sweep, false, paint);
+					float sweep = 360f * Clamp01(p.JumpBoostTimeRemaining / JumpsEngine.PowerupDuration);
+					_ringPaint.Color = SKColors.MediumPurple;
+					canvas.DrawArc(_ringRectOuter[i], -90f, sweep, false, _ringPaint);
 				}
 
 				// Speed boost
 				if (p.SpeedBoostActive && p.SpeedBoostTimeRemaining > 0f)
 				{
-					float frac = Clamp01(p.SpeedBoostTimeRemaining / JumpsEngine.PowerupDuration);
-					float sweep = 360f * frac;
-
-					using var paint = new SKPaint
-					{
-						Color = SKColors.LimeGreen,
-						IsAntialias = true,
-						Style = SKPaintStyle.Stroke,
-						StrokeWidth = 2.5f
-					};
-					float r = size * 0.7f;
-					var rect = new SKRect(cx - r, cy - r, cx + r, cy + r);
-					canvas.DrawArc(rect, -90f, sweep, false, paint);
+					float sweep = 360f * Clamp01(p.SpeedBoostTimeRemaining / JumpsEngine.PowerupDuration);
+					_ringPaint.Color = SKColors.LimeGreen;
+					canvas.DrawArc(_ringRectMid[i], -90f, sweep, false, _ringPaint);
 				}
 
 				// Magnet
 				if (p.MagnetActive && p.MagnetTimeRemaining > 0f)
 				{
-					float frac = Clamp01(p.MagnetTimeRemaining / JumpsEngine.PowerupDuration);
-					float sweep = 360f * frac;
-
-					using var paint = new SKPaint
-					{
-						Color = SKColors.Red,
-						IsAntialias = true,
-						Style = SKPaintStyle.Stroke,
-						StrokeWidth = 2.5f
-					};
-					float r = JumpsEngine.MagnetRadiusWorld;
-					var rect = new SKRect(cx - r, cy - r, cx + r, cy + r);
-					canvas.DrawArc(rect, -90f, sweep, false, paint);
+					float sweep = 360f * Clamp01(p.MagnetTimeRemaining / JumpsEngine.PowerupDuration);
+					_ringPaint.Color = SKColors.Red;
+					canvas.DrawArc(_ringRectMagnet[i], -90f, sweep, false, _ringPaint);
 				}
 
 				// Double jump
 				if (p.DoubleJumpActive && p.DoubleJumpTimeRemaining > 0f)
 				{
-					float frac = Clamp01(p.DoubleJumpTimeRemaining / JumpsEngine.PowerupDuration);
-					float sweep = 360f * frac;
-
-					using var paint = new SKPaint
-					{
-						Color = SKColors.SaddleBrown,
-						IsAntialias = true,
-						Style = SKPaintStyle.Stroke,
-						StrokeWidth = 2.5f
-					};
-					float r = size * 0.5f;
-					var rect = new SKRect(cx - r, cy - r, cx + r, cy + r);
-					canvas.DrawArc(rect, -90f, sweep, false, paint);
+					float sweep = 360f * Clamp01(p.DoubleJumpTimeRemaining / JumpsEngine.PowerupDuration);
+					_ringPaint.Color = SKColors.SaddleBrown;
+					canvas.DrawArc(_ringRectInner[i], -90f, sweep, false, _ringPaint);
 				}
 
 				// Slow scroll
 				if (p.SlowScrollActive && p.SlowScrollTimeRemaining > 0f)
 				{
-					float frac = Clamp01(p.SlowScrollTimeRemaining / JumpsEngine.PowerupDuration);
-					float sweep = 360f * frac;
-
-					using var paint = new SKPaint
-					{
-						Color = SKColors.Cyan,
-						IsAntialias = true,
-						Style = SKPaintStyle.Stroke,
-						StrokeWidth = 2.5f
-					};
-					float r = size * 1.1f;
-					var rect = new SKRect(cx - r, cy - r, cx + r, cy + r);
-					canvas.DrawArc(rect, -90f, sweep, false, paint);
+					float sweep = 360f * Clamp01(p.SlowScrollTimeRemaining / JumpsEngine.PowerupDuration);
+					_ringPaint.Color = SKColors.Cyan;
+					canvas.DrawArc(_ringRectSlow[i], -90f, sweep, false, _ringPaint);
 				}
 			}
 		}
+
+		private void UpdateRingRectsIfNeeded(JumpsOnlineSnapshotPayload snapshot)
+		{
+			float size = JumpsEngine.PlayerSize;
+
+			foreach (var p in snapshot.Players)
+			{
+				int i = p.PlayerIndex;
+				if (i < 0 || i >= 3) continue;
+
+				float cx = p.X + size / 2f;
+				float cy = p.Y + size / 2f;
+
+				// only recompute if center moved (or first time)
+				if (!_ringRectsValid || cx != _ringCxCache[i] || cy != _ringCyCache[i])
+				{
+					_ringCxCache[i] = cx;
+					_ringCyCache[i] = cy;
+
+					float rOuter = size * 0.9f;
+					float rMid = size * 0.7f;
+					float rInner = size * 0.5f;
+					float rSlow = size * 1.1f;
+					float rMag = JumpsEngine.MagnetRadiusWorld;
+
+					_ringRectOuter[i] = new SKRect(cx - rOuter, cy - rOuter, cx + rOuter, cy + rOuter);
+					_ringRectMid[i] = new SKRect(cx - rMid, cy - rMid, cx + rMid, cy + rMid);
+					_ringRectInner[i] = new SKRect(cx - rInner, cy - rInner, cx + rInner, cy + rInner);
+					_ringRectSlow[i] = new SKRect(cx - rSlow, cy - rSlow, cx + rSlow, cy + rSlow);
+					_ringRectMagnet[i] = new SKRect(cx - rMag, cy - rMag, cx + rMag, cy + rMag);
+				}
+			}
+
+			_ringRectsValid = true;
+		}
+
 
 		private SKColor GetPlayerColor(int index)
 		{
@@ -682,5 +723,24 @@ namespace GameClient.Wpf.GameClients
 				_ => SKColors.Gray
 			};
 		}
+
+		private void DisposeSkiaResources()
+		{
+			_bgPaint.Dispose();
+			_platPaint.Dispose();
+
+			_coinPaint.Dispose();
+			_jumpPaint.Dispose();
+			_speedPaint.Dispose();
+			_magnetPaint.Dispose();
+			_doublePaint.Dispose();
+			_slowPaint.Dispose();
+
+			_playerFillPaint.Dispose();
+			_outlinePaint.Dispose();
+			_textPaint.Dispose();
+			_ringPaint.Dispose();
+		}
+
 	}
 }
