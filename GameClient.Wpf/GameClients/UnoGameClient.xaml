@@ -36,9 +36,10 @@
 				Background="#151515">
 			<Grid>
 				<skia:SKElement x:Name="Canvas"
-								MinHeight="600"
+								MinHeight="800"
 								PaintSurface="Canvas_PaintSurface"
 								MouseLeftButtonDown="Canvas_MouseLeftButtonDown"
+								MouseLeftButtonUp="Canvas_MouseLeftButtonUp"
 								MouseMove="Canvas_MouseMove"
 								MouseLeave="Canvas_MouseLeave"/>
 

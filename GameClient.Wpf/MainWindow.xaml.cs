@@ -25,6 +25,11 @@ namespace GameClient.Wpf
 		private int _playerCount;
 		private bool _isConnected;
 
+		private const int MaxLogLines = 300;      // keep UI fast
+		private const int MaxLogChars = 80_000;   // cap total text
+		private long _lastSpamLogTicks;
+		private const double SpamLogHz = 2.0;     // at most 2 spam logs/sec
+
 
 		//XAML for binding
 		public List<GameCardModel> ArcadeGames { get; } = new();
@@ -728,7 +733,7 @@ namespace GameClient.Wpf
 					case Key.Right:
 					case Key.Up:
 					case Key.Down:
-					
+
 					case Key.Tab:
 					case Key.LeftShift:
 					case Key.RightShift:
@@ -751,7 +756,7 @@ namespace GameClient.Wpf
 					case Key.Right:
 					case Key.Up:
 					case Key.Down:
-					
+
 					case Key.Tab:
 					case Key.LeftShift:
 					case Key.RightShift:
@@ -775,7 +780,7 @@ namespace GameClient.Wpf
 				var json = JsonSerializer.Serialize(msg);
 				var bytes = Encoding.UTF8.GetBytes(json);
 				await _socket.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None);
-				Log(">> " + msg.MessageType);
+				//Log(">> " + msg.MessageType);
 			}
 			catch (Exception ex)
 			{
@@ -784,13 +789,24 @@ namespace GameClient.Wpf
 		}
 
 		private void Log(string text)
+{
+	Dispatcher.Invoke(() =>
+	{
+		LogBox.AppendText(text + Environment.NewLine);
+
+		// Hard cap size so textbox doesn't become a lag monster
+		const int MaxLogChars = 80_000;
+		if (LogBox.Text.Length > MaxLogChars)
 		{
-			Dispatcher.Invoke(() =>
-			{
-				LogBox.AppendText(text + Environment.NewLine);
-				LogBox.ScrollToEnd();
-			});
+			LogBox.Text = LogBox.Text[^MaxLogChars..];
+			LogBox.CaretIndex = LogBox.Text.Length;
 		}
+
+		LogBox.ScrollToEnd();
+	});
+}
+
+
 		private void ScrollToCurrentGame()
 		{
 			// Jump to top so the header + current game are visible

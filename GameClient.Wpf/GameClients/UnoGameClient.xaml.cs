@@ -43,6 +43,30 @@ namespace GameClient.Wpf.GameClients
 		private int _hoverHandIndex = -1;
 		private int _lastHoverHandIndex = -1;
 
+		// Visual order: slot -> handIndex (server index in _state.YourHand)
+		private List<int> _handOrder = new();
+
+		// Drag state (slot-based)
+		private bool _isDragging;
+		private int _dragSlot = -1;          // which SLOT we started dragging from
+		private int _dragHandIndex = -1;     // which HAND INDEX is being dragged
+		private int _dragCurrentSlot = -1;   // current insertion slot during drag preview
+		private float _dragStartMouseX;
+		private float _dragStartMouseY;
+		private float _dragMouseX;
+		private float _dragMouseY;
+		private bool _dragExceededThreshold;
+
+		// Layout cache for hand (needed to compute slot from mouse x)
+		private float _handStartX;
+		private float _handStep;
+		private float _handCardW;
+		private float _handCardH;
+		private float _handCardTopY;
+
+		private const float DragThresholdPx = 6f;
+
+
 		public UnoGameClient()
 		{
 			InitializeComponent();
@@ -81,6 +105,16 @@ namespace GameClient.Wpf.GameClients
 				// prevent stale selections if hand changed
 				_selectedSet.Clear();
 				_selectedOrder.Clear();
+
+				// reset visual order to natural order whenever hand changes
+				_handOrder = Enumerable.Range(0, _state.YourHand.Count).ToList();
+
+				// reset hover/drag
+				_hoverHandIndex = -1;
+				_lastHoverHandIndex = -1;
+				_isDragging = false;
+				_dragSlot = _dragHandIndex = _dragCurrentSlot = -1;
+
 
 				//_lastError = "";
 
@@ -227,32 +261,78 @@ namespace GameClient.Wpf.GameClients
 		private void Canvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
 		{
 			if (_state == null) return;
-			if (!_state.IsYourTurn) return;
 			if (_awaitingColorChoice) return;
 
 			var p = e.GetPosition(Canvas);
 			float x = (float)p.X;
 			float y = (float)p.Y;
 
-			for (int i = _handRects.Length - 1; i >= 0; i--) // check topmost first
+			// find which SLOT we clicked (topmost slot last drawn)
+			int slot = -1;
+			for (int i = _handRects.Length - 1; i >= 0; i--)
 			{
-				if (!_handRects[i].Contains(x, y))
-					continue;
-				if (_selectedSet.Contains(i))
+				if (_handRects[i].Contains(x, y))
 				{
-					_selectedSet.Remove(i);
-					_selectedOrder.Remove(i); // removes first occurrence (there will only be one)
+					slot = i;
+					break;
 				}
-				else
+			}
+			if (slot < 0) return;
+
+			// start a potential drag
+			_isDragging = true;
+			_dragExceededThreshold = false;
+			_dragSlot = slot;
+			_dragCurrentSlot = slot;
+			_dragHandIndex = GetHandIndexAtSlot(slot);
+
+			_dragStartMouseX = x;
+			_dragStartMouseY = y;
+			_dragMouseX = x;
+			_dragMouseY = y;
+
+			Canvas.CaptureMouse();
+			Canvas.InvalidateVisual();
+		}
+		private void Canvas_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+		{
+			if (_state == null) return;
+
+			if (_isDragging)
+			{
+				Canvas.ReleaseMouseCapture();
+
+				// If we DID NOT move enough => treat as a click (toggle selection)
+				if (!_dragExceededThreshold)
 				{
-					_selectedSet.Add(i);
-					_selectedOrder.Add(i); // append => preserves selection order
+					// Only allow selecting when it's your turn + normal turn (your original rules)
+					if (_state.IsYourTurn && !_awaitingColorChoice)
+					{
+						int handIndex = _dragHandIndex;
+
+						if (_selectedSet.Contains(handIndex))
+						{
+							_selectedSet.Remove(handIndex);
+							_selectedOrder.Remove(handIndex);
+						}
+						else
+						{
+							_selectedSet.Add(handIndex);
+							_selectedOrder.Add(handIndex);
+						}
+
+						UpdateUi();
+					}
 				}
-				UpdateUi();
+
+				// End drag
+				_isDragging = false;
+				_dragSlot = _dragHandIndex = _dragCurrentSlot = -1;
 				Canvas.InvalidateVisual();
-				break;
 			}
 		}
+
+
 		private void Canvas_MouseMove(object sender, MouseEventArgs e)
 		{
 			if (_state == null) return;
@@ -261,9 +341,34 @@ namespace GameClient.Wpf.GameClients
 			float x = (float)p.X;
 			float y = (float)p.Y;
 
-			int hover = -1;
+			// ---- dragging reorder ----
+			if (_isDragging)
+			{
+				_dragMouseX = x;
+				_dragMouseY = y;
 
-			// IMPORTANT: check from topmost to bottommost (rightmost last drawn)
+				float dx = MathF.Abs(_dragMouseX - _dragStartMouseX);
+				float dy = MathF.Abs(_dragMouseY - _dragStartMouseY);
+				if (!_dragExceededThreshold && (dx > DragThresholdPx || dy > DragThresholdPx))
+					_dragExceededThreshold = true;
+
+				if (_dragExceededThreshold && _handRects.Length > 0)
+				{
+					int newSlot = SlotFromMouseX(_dragMouseX);
+					if (newSlot != _dragCurrentSlot)
+					{
+						MoveDraggedToSlot(newSlot);
+						_dragCurrentSlot = newSlot;
+					}
+				}
+
+				Canvas.Cursor = Cursors.SizeWE;
+				Canvas.InvalidateVisual();
+				return; // don't do hover while dragging
+			}
+
+			// ---- hover (your existing logic) ----
+			int hover = -1;
 			for (int i = _handRects.Length - 1; i >= 0; i--)
 			{
 				if (_handRects[i].Contains(x, y))
@@ -283,13 +388,59 @@ namespace GameClient.Wpf.GameClients
 			}
 		}
 
+
 		private void Canvas_MouseLeave(object sender, MouseEventArgs e)
 		{
 			_hoverHandIndex = -1;
 			_lastHoverHandIndex = -1;
+
+			if (_isDragging)
+			{
+				_isDragging = false;
+				_dragSlot = _dragHandIndex = _dragCurrentSlot = -1;
+				Canvas.ReleaseMouseCapture();
+			}
+
 			Canvas.Cursor = Cursors.Arrow;
 			Canvas.InvalidateVisual();
 		}
+
+		private int GetHandIndexAtSlot(int slot)
+		{
+			if (slot < 0 || slot >= _handOrder.Count) return -1;
+			return _handOrder[slot];
+		}
+
+		private int SlotFromMouseX(float mouseX)
+		{
+			// use center points; clamp into [0..n-1]
+			int n = _handRects.Length;
+			if (n <= 1) return 0;
+
+			float local = mouseX - _handStartX;
+			float approx = local / _handStep; // slot-ish
+			int slot = (int)MathF.Round(approx);
+			return Math.Clamp(slot, 0, n - 1);
+		}
+
+		private void MoveDraggedToSlot(int newSlot)
+		{
+			if (_dragHandIndex < 0) return;
+
+			// Remove dragged card from its current position in order, then insert at newSlot
+			int oldPos = _handOrder.IndexOf(_dragHandIndex);
+			if (oldPos < 0) return;
+
+			_handOrder.RemoveAt(oldPos);
+
+			// If removing from before the insertion point, the list shifted left.
+			if (newSlot > oldPos) newSlot--;
+
+			newSlot = Math.Clamp(newSlot, 0, _handOrder.Count);
+			_handOrder.Insert(newSlot, _dragHandIndex);
+		}
+
+
 
 
 
@@ -307,22 +458,321 @@ namespace GameClient.Wpf.GameClients
 			int w = e.Info.Width;
 			int h = e.Info.Height;
 
+			// --- table metrics (shared for everything) ---
+			float tableCx = w * 0.5f;
+			float tableCy = h * 0.52f;
+			float tableR = MathF.Min(w, h) * 0.42f;
+
+			DrawHexTable(canvas, w, h);
+
 			float pad = 16f;
 
-			// Top area: discard + info
+			// top info stays at the top
 			float topH = 140f;
 			DrawTopInfo(canvas, pad, pad, w - pad * 2, topH);
 
-			// Reserve bottom area for YOUR hand
-			float handAreaH = 200f;                 // tweak to taste
-			float handTop = h - pad - handAreaH;    // bottom-anchored
+			// deck/pile stays centered on the table
+			DrawCenterDeckAndPile(canvas, w, h);
 
-			// Opponents can use the space between top and your hand
-			DrawOpponentsHands(canvas, pad, pad, w - pad * 2, handTop - pad);
+			// opponents stay on hex
+			DrawOpponentsHandsHex(canvas, tableCx, tableCy, tableR);
+			DrawTurnArrow(canvas, w, h, tableCx, tableCy, tableR);
 
-			// Your hand at bottom
-			DrawHand(canvas, pad, handTop, w - pad * 2, handAreaH);
+			// =========================
+			// YOUR HAND: bottom middle of screen
+			// =========================
+			float handAreaH = 200f;
+			float handTopY = h - pad - handAreaH;
+
+			// pick a hand width that looks good and stays centered
+			float handWidth = MathF.Min(w - pad * 2, 900f);
+			float handX = (w - handWidth) * 0.5f;
+
+			DrawHand(canvas, handX, handTopY, handWidth, handAreaH);
 		}
+
+		private void DrawOpponentsHandsHex(SKCanvas canvas, float cx, float cy, float r)
+		{
+			if (_state == null) return;
+			if (string.IsNullOrEmpty(_playerId)) return;
+
+			var order = _state.PlayersInOrder;
+			if (order == null || order.Count < 2) return;
+
+			int youIndex = order.IndexOf(_playerId);
+			if (youIndex < 0) return;
+
+			int GetHandCount(string pid)
+			{
+				var p = _state.PlayersPublic.FirstOrDefault(pp => pp.PlayerId == pid);
+				return p?.HandCount ?? 0;
+			}
+
+			// opponent card backs (can stay as-is)
+			float cardW = 40f;
+			float cardH = cardW * 1.4f;
+
+			using var namePaint = new SKPaint { Color = SKColors.White, IsAntialias = true, TextSize = 14 };
+			using var smallPaint = new SKPaint { Color = new SKColor(200, 200, 200), IsAntialias = true, TextSize = 12 };
+
+			// flat-top hex edges
+			float flatHalfHeight = r * 0.866f; // sqrt(3)/2
+			float topEdgeY = cy - flatHalfHeight;
+			float bottomEdgeY = cy + flatHalfHeight;
+
+			float inset = 18f; // keep hands inside the table edge
+
+			int n = order.Count;
+
+			for (int abs = 0; abs < n; abs++)
+			{
+				if (abs == youIndex) continue;
+
+				string pid = order[abs];
+				int count = GetHandCount(pid);
+
+				int rel = (abs - youIndex + n) % n;
+
+				// 2 players: opponent is top
+				if (n == 2) rel = 2;
+
+				if (rel == 2)
+				{
+					float maxSpan = r * 1.10f;
+					float startX = cx - maxSpan * 0.5f;
+					float y = topEdgeY + inset;
+
+					DrawHorizontalBackStack(canvas, startX, y, cardW, cardH, count, maxSpan);
+
+					var (x0, span, _) = ComputeHorizontalStack(startX, cardW, count, maxSpan);
+					smallPaint.TextAlign = SKTextAlign.Center;
+					canvas.DrawText($"{pid} ({count})", x0 + span * 0.5f, y + cardH + 14, smallPaint);
+				}
+				else if (rel == 1)
+				{
+					float maxSpan = r * 0.95f;
+					float x = (cx - r) + inset;
+					float startY = cy - maxSpan * 0.5f;
+
+					DrawVerticalBackStack(canvas, x, startY, cardW, cardH, count, maxSpan);
+
+					var (y0, _, _) = ComputeVerticalStack(startY, cardH, count, maxSpan);
+					namePaint.TextAlign = SKTextAlign.Left;
+					canvas.DrawText($"{pid} ({count})", x, y0 - 8, namePaint);
+				}
+				else if (rel == 3)
+				{
+					float maxSpan = r * 0.95f;
+					float x = (cx + r) - inset - cardW;
+					float startY = cy - maxSpan * 0.5f;
+
+					DrawVerticalBackStack(canvas, x, startY, cardW, cardH, count, maxSpan);
+
+					var (y0, _, _) = ComputeVerticalStack(startY, cardH, count, maxSpan);
+					namePaint.TextAlign = SKTextAlign.Right;
+					canvas.DrawText($"{pid} ({count})", x - 8, y0 - 8, namePaint);
+				}
+
+			}
+		}
+		private void DrawTurnArrow(SKCanvas canvas, int w, int h, float tableCx, float tableCy, float tableR)
+		{
+			if (_state == null) return;
+			if (string.IsNullOrEmpty(_playerId)) return;
+
+			var order = _state.PlayersInOrder;
+			if (order == null || order.Count < 2) return;
+
+			int youIndex = order.IndexOf(_playerId);
+			if (youIndex < 0) return;
+
+			// Identify current player's "relative seat" from your perspective
+			int curAbs = order.IndexOf(_state.CurrentPlayerId);
+			if (curAbs < 0) return;
+
+			int n = order.Count;
+			int rel = (curAbs - youIndex + n) % n;
+
+			// For 2 players, force opponent to TOP like your existing logic
+			if (n == 2 && curAbs != youIndex) rel = 2;
+			if (n == 2 && curAbs == youIndex) rel = 0;
+
+			// --- deck position (must match DrawCenterDeckAndPile) ---
+			float deckCardW = 50f;
+			float deckCardH = deckCardW * 1.4f;
+			float gap = 18f;
+
+			float cx = w * 0.5f;
+			float cy = h * 0.52f;
+
+			float deckX = cx - gap - deckCardW;
+			float deckY = cy - deckCardH * 0.5f;
+
+			var deckCenter = new SKPoint(deckX + deckCardW * 0.5f, deckY + deckCardH * 0.5f);
+
+			// --- target seat anchor points (on the hex) ---
+			float flatHalfHeight = tableR * 0.866f; // sqrt(3)/2
+			float topEdgeY = tableCy - flatHalfHeight;
+			float bottomEdgeY = tableCy + flatHalfHeight;
+			float inset = 18f;
+
+			// default target = YOU (bottom)
+			SKPoint target = new SKPoint(tableCx, bottomEdgeY - inset);
+
+			if (rel == 2) // TOP
+				target = new SKPoint(tableCx, topEdgeY + inset);
+			else if (rel == 1) // LEFT
+				target = new SKPoint((tableCx - tableR) + inset, tableCy);
+			else if (rel == 3) // RIGHT
+				target = new SKPoint((tableCx + tableR) - inset, tableCy);
+			else if (rel == 0) // YOU (bottom)
+				target = new SKPoint(tableCx, bottomEdgeY - inset);
+
+			// --- draw arrow from deck -> target ---
+			// ---- make the arrow shorter + "floating" so it doesn't touch deck/hands ----
+			var dir = Normalize(Sub(target, deckCenter));
+
+			// tune these 3 numbers:
+			float alongOffset = 70f;   // pushes arrow away from deck/hand along the line
+			float sideOffset = 24f;   // sideways “float” so it doesn’t sit on top of stuff
+			float arrowLen = 70f; // shorter arrow length
+
+			var perp = new SKPoint(-dir.Y, dir.X);
+
+			var mid = Add(deckCenter, Add(Mul(dir, alongOffset), Mul(perp, sideOffset)));
+			var start = Sub(mid, Mul(dir, arrowLen * 0.5f));
+			var end = Add(mid, Mul(dir, arrowLen * 0.5f));
+
+			DrawArrow(canvas, start, end);
+
+
+		}
+		private static SKPoint Normalize(SKPoint v)
+		{
+			float len = MathF.Sqrt(v.X * v.X + v.Y * v.Y);
+			return (len < 0.001f) ? new SKPoint(1, 0) : new SKPoint(v.X / len, v.Y / len);
+		}
+
+		private static SKPoint Add(SKPoint a, SKPoint b) => new SKPoint(a.X + b.X, a.Y + b.Y);
+		private static SKPoint Sub(SKPoint a, SKPoint b) => new SKPoint(a.X - b.X, a.Y - b.Y);
+		private static SKPoint Mul(SKPoint a, float s) => new SKPoint(a.X * s, a.Y * s);
+
+
+		private static SKPoint MoveTowards(SKPoint from, SKPoint to, float dist)
+		{
+			var dx = to.X - from.X;
+			var dy = to.Y - from.Y;
+			var len = MathF.Sqrt(dx * dx + dy * dy);
+			if (len < 0.001f) return from;
+			float t = dist / len;
+			return new SKPoint(from.X + dx * t, from.Y + dy * t);
+		}
+
+		private static void DrawArrow(SKCanvas canvas, SKPoint start, SKPoint end)
+		{
+			// Big yellow arrow with a subtle dark shadow for visibility
+			using var shadow = new SKPaint
+			{
+				IsAntialias = true,
+				Style = SKPaintStyle.Stroke,
+				StrokeWidth = 12f,
+				StrokeCap = SKStrokeCap.Round,
+				Color = new SKColor(0, 0, 0, 120)
+			};
+
+			using var paint = new SKPaint
+			{
+				IsAntialias = true,
+				Style = SKPaintStyle.Stroke,
+				StrokeWidth = 10f,
+				StrokeCap = SKStrokeCap.Round,
+				Color = new SKColor(255, 220, 0) // bright yellow
+			};
+
+			// main shaft
+			canvas.DrawLine(start.X + 2, start.Y + 2, end.X + 2, end.Y + 2, shadow);
+			canvas.DrawLine(start, end, paint);
+
+			// arrow head
+			float headLen = 26f;
+			float headAngle = 28f * (MathF.PI / 180f);
+
+			var dirX = end.X - start.X;
+			var dirY = end.Y - start.Y;
+			var len = MathF.Sqrt(dirX * dirX + dirY * dirY);
+			if (len < 0.001f) return;
+
+			dirX /= len;
+			dirY /= len;
+
+			// rotate direction by +/- headAngle
+			(float lx, float ly) = Rotate(dirX, dirY, +headAngle);
+			(float rx, float ry) = Rotate(dirX, dirY, -headAngle);
+
+			var left = new SKPoint(end.X - lx * headLen, end.Y - ly * headLen);
+			var right = new SKPoint(end.X - rx * headLen, end.Y - ry * headLen);
+
+			canvas.DrawLine(left.X + 2, left.Y + 2, end.X + 2, end.Y + 2, shadow);
+			canvas.DrawLine(right.X + 2, right.Y + 2, end.X + 2, end.Y + 2, shadow);
+
+			canvas.DrawLine(left, end, paint);
+			canvas.DrawLine(right, end, paint);
+		}
+
+		private static (float x, float y) Rotate(float x, float y, float radians)
+		{
+			float c = MathF.Cos(radians);
+			float s = MathF.Sin(radians);
+			return (x * c - y * s, x * s + y * c);
+		}
+		private int GetSelectionNumber(int handIndex)
+		{
+			// returns 1..N, or 0 if not selected
+			int pos = _selectedOrder.IndexOf(handIndex);
+			return (pos >= 0) ? (pos + 1) : 0;
+		}
+
+
+		private void DrawCenterDeckAndPile(SKCanvas canvas, int w, int h)
+		{
+			if (_state == null) return;
+
+			// center of the “table”
+			float cx = w * 0.5f;
+			float cy = h * 0.52f;
+
+			float cardW = 50;
+			float cardH = cardW * 1.4f;
+
+			// deck on left, discard on right
+			float gap = 18f;
+			float deckX = cx - gap - cardW;
+			float deckY = cy - cardH * 0.5f;
+
+			float discardX = cx + gap;
+			float discardY = cy - cardH * 0.5f;
+
+			using var smallPaint = new SKPaint { Color = new SKColor(220, 220, 220), IsAntialias = true, TextSize = 12 };
+
+			// Deck stack (face down)
+			int deckLayers = Math.Min(3, Math.Max(0, _state.DeckCount));
+			for (int i = deckLayers - 1; i >= 0; i--)
+			{
+				DrawCardBack(canvas, deckX + i * 3, deckY - i * 3, cardW, cardH);
+			}
+			canvas.DrawText($"Deck ({_state.DeckCount})", deckX, deckY + cardH + 16, smallPaint);
+
+			// Discard stack
+			int discLayers = Math.Min(3, Math.Max(0, _state.DiscardCount - 1));
+			for (int i = discLayers; i >= 1; i--)
+			{
+				DrawCardBack(canvas, discardX + i * 3, discardY - i * 3, cardW, cardH);
+			}
+
+			DrawCard(canvas, discardX, discardY, cardW, cardH, _state.TopDiscard, isFaceUp: true);
+			canvas.DrawText($"Pile ({_state.DiscardCount})", discardX, discardY + cardH + 16, smallPaint);
+		}
+
 
 		private void DrawOpponentsHands(SKCanvas canvas, float x, float y, float width, float height)
 		{
@@ -412,9 +862,13 @@ namespace GameClient.Wpf.GameClients
 			float step = (count <= 1) ? 0 : (maxSpan - cardW) / (count - 1);
 			step = Math.Clamp(step, 10f, cardW * 0.60f);
 
+			// NEW: center the actual span within maxSpan
+			float span = (count <= 1) ? cardW : (cardW + step * (count - 1));
+			float x0 = startX + MathF.Max(0f, (maxSpan - span) * 0.5f);
+
 			for (int i = 0; i < count; i++)
 			{
-				float cx = startX + i * step;
+				float cx = x0 + i * step;
 				DrawCardBack(canvas, cx, startY, cardW, cardH);
 			}
 		}
@@ -426,12 +880,17 @@ namespace GameClient.Wpf.GameClients
 			float step = (count <= 1) ? 0 : (maxSpan - cardH) / (count - 1);
 			step = Math.Clamp(step, 10f, cardH * 0.35f);
 
+			// NEW: center the actual span within maxSpan
+			float span = (count <= 1) ? cardH : (cardH + step * (count - 1));
+			float y0 = startY + MathF.Max(0f, (maxSpan - span) * 0.5f);
+
 			for (int i = 0; i < count; i++)
 			{
-				float cy = startY + i * step;
+				float cy = y0 + i * step;
 				DrawCardBack(canvas, startX, cy, cardW, cardH);
 			}
 		}
+
 
 		private async void PlaySelected_Click(object sender, RoutedEventArgs e)
 		{
@@ -505,36 +964,7 @@ namespace GameClient.Wpf.GameClients
 				canvas.DrawText($"WINNER: {_state.WinnerPlayerId}", x, y + 102, winPaint);
 			}
 
-			// Card sizes
-			float cardW = 110;
-			float cardH = 150;
 
-			// Positions
-			float deckX = x + width - (cardW * 2) - 20; // deck left
-			float deckY = y + 8;
-
-			float discardX = x + width - cardW;         // discard right
-			float discardY = y + 8;
-
-			// Draw deck as a small stack (face down)
-			int deckLayers = Math.Min(3, Math.Max(0, _state!.DeckCount)); // 0..3
-			for (int i = deckLayers - 1; i >= 0; i--)
-			{
-				DrawCardBack(canvas, deckX + i * 3, deckY - i * 3, cardW, cardH);
-			}
-
-
-			// Draw discard as a stack: 2-3 shadows + top face-up
-			int discLayers = Math.Min(3, Math.Max(0, _state.DiscardCount - 1));
-			for (int i = discLayers; i >= 1; i--)
-			{
-				// draw “shadow” backs underneath just for stack feel
-				DrawCardBack(canvas, discardX + i * 3, discardY - i * 3, cardW, cardH);
-			}
-
-			// Top discard face up
-			DrawCard(canvas, discardX, discardY, cardW, cardH, _state.TopDiscard, isFaceUp: true);
-			canvas.DrawText($"Pile ({_state.DiscardCount})", discardX, discardY + cardH + 16, smallPaint);
 
 		}
 
@@ -570,8 +1000,21 @@ namespace GameClient.Wpf.GameClients
 				step = Math.Clamp(step, minStep, maxStep);
 			}
 
-			float startX = x;
 			float cy = y + 10;
+
+			// how wide the hand actually spans with the chosen step
+			float span = (count <= 1) ? cardW : (cardW + step * (count - 1));
+
+			// center that span inside the available width
+			float startX = x + (width - span) * 0.5f;
+
+
+			_handStartX = startX;
+			_handStep = step <= 0 ? cardW : step;
+			_handCardW = cardW;
+			_handCardH = cardH;
+			_handCardTopY = cy;
+
 
 
 			// Build rects first (same as you already do)
@@ -582,42 +1025,79 @@ namespace GameClient.Wpf.GameClients
 				_handRects[i] = rect;
 			}
 
-			// Draw all cards EXCEPT hovered
-			for (int i = 0; i < count; i++)
+			// draw all non-hover + non-dragged first
+			for (int slot = 0; slot < count; slot++)
 			{
-				if (i == _hoverHandIndex) continue;
+				// if dragging, skip the dragged card slot (we'll draw it floating last)
+				if (_isDragging && _dragHandIndex >= 0)
+				{
+					int hi = GetHandIndexAtSlot(slot);
+					if (hi == _dragHandIndex) continue;
+				}
 
-				bool selected = _selectedSet.Contains(i);
+				// if hovering, skip hover slot so we can draw it last (on top)
+				if (!_isDragging && slot == _hoverHandIndex) continue;
+
+				int handIndex = GetHandIndexAtSlot(slot);
+				if (handIndex < 0 || handIndex >= _state.YourHand.Count) continue;
+
+				bool selected = _selectedSet.Contains(handIndex);
 				bool highlight = _state.IsYourTurn && !_awaitingColorChoice;
 
-				DrawCard(canvas,
-					_handRects[i].Left, _handRects[i].Top,
-					_handRects[i].Width, _handRects[i].Height,
-					_state.YourHand[i],
-					isFaceUp: true,
-					highlightClickable: highlight,
-					isSelected: selected);
+				var r = _handRects[slot];
+				int selNum = selected ? GetSelectionNumber(handIndex) : 0;
+				DrawCard(canvas, r.Left, r.Top, r.Width, r.Height,
+	_state.YourHand[handIndex],
+	isFaceUp: true,
+	highlightClickable: highlight,
+	isSelected: selected,
+	selectionNumber: selNum);
 			}
+
 
 			// Draw hovered card LAST so it’s on top (and lift it slightly)
-			if (_hoverHandIndex >= 0 && _hoverHandIndex < count)
+			if (!_isDragging && _hoverHandIndex >= 0 && _hoverHandIndex < count)
 			{
-				int i = _hoverHandIndex;
+				int slot = _hoverHandIndex;
+				int handIndex = GetHandIndexAtSlot(slot);
 
-				bool selected = _selectedSet.Contains(i);
-				bool highlight = _state.IsYourTurn && !_awaitingColorChoice;
+				if (handIndex >= 0 && handIndex < _state.YourHand.Count)
+				{
+					bool selected = _selectedSet.Contains(handIndex);
+					float lift = 18f;
+					var r = _handRects[slot];
 
-				float lift = 18f; // tweak to taste
-				var r = _handRects[i];
+					int selNum = selected ? GetSelectionNumber(handIndex) : 0;
 
-				DrawCard(canvas,
-					r.Left, r.Top - lift,
-					r.Width, r.Height,
-					_state.YourHand[i],
-					isFaceUp: true,
-					highlightClickable: true,   // make it feel interactive
-					isSelected: selected);
+					DrawCard(canvas, r.Left, r.Top - lift, r.Width, r.Height,
+						_state.YourHand[handIndex],
+						isFaceUp: true,
+						highlightClickable: true,
+						isSelected: selected,
+						selectionNumber: selNum);
+				}
 			}
+
+			if (_isDragging && _dragHandIndex >= 0 && _dragHandIndex < _state.YourHand.Count)
+			{
+				bool selected = _selectedSet.Contains(_dragHandIndex);
+
+				// keep it centered under mouse
+				float drawX = _dragMouseX - _handCardW * 0.5f;
+				float drawY = _handCardTopY - 26f; // lifted a bit
+
+				int selNum = selected ? GetSelectionNumber(_dragHandIndex) : 0;
+
+				DrawCard(canvas, drawX, drawY, _handCardW, _handCardH,
+					_state.YourHand[_dragHandIndex],
+					isFaceUp: true,
+					highlightClickable: true,
+					isSelected: selected,
+					selectionNumber: selNum);
+
+			}
+
+
 
 		}
 		private async Task SendPlayCardsAsync(System.Collections.Generic.List<int> indices, UnoCardColor? chosenColor)
@@ -641,9 +1121,98 @@ namespace GameClient.Wpf.GameClients
 
 			await _sendAsync!(msg);
 		}
+		private static SKPath BuildHexPath(float cx, float cy, float radius, float rotationRadians = 0f)
+		{
+			var path = new SKPath();
+			for (int i = 0; i < 6; i++)
+			{
+				float a = rotationRadians + (float)(Math.PI / 3.0) * i; // 60 deg steps
+				float px = cx + radius * MathF.Cos(a);
+				float py = cy + radius * MathF.Sin(a);
+				if (i == 0) path.MoveTo(px, py);
+				else path.LineTo(px, py);
+			}
+			path.Close();
+			return path;
+		}
+		private static (float x0, float span, float step) ComputeHorizontalStack(float startX, float cardW, int count, float maxSpan)
+		{
+			float step = (count <= 1) ? 0 : (maxSpan - cardW) / (count - 1);
+			step = Math.Clamp(step, 10f, cardW * 0.60f);
+
+			float span = (count <= 1) ? cardW : (cardW + step * (count - 1));
+			float x0 = startX + MathF.Max(0f, (maxSpan - span) * 0.5f);
+			return (x0, span, step);
+		}
+
+		private static (float y0, float span, float step) ComputeVerticalStack(float startY, float cardH, int count, float maxSpan)
+		{
+			float step = (count <= 1) ? 0 : (maxSpan - cardH) / (count - 1);
+			step = Math.Clamp(step, 10f, cardH * 0.35f);
+
+			float span = (count <= 1) ? cardH : (cardH + step * (count - 1));
+			float y0 = startY + MathF.Max(0f, (maxSpan - span) * 0.5f);
+			return (y0, span, step);
+		}
 
 
-		private static void DrawCard(SKCanvas canvas, float x, float y, float w, float h, UnoCardDto? card, bool isFaceUp, bool highlightClickable = false, bool isSelected = false)
+		private static void DrawHexTable(SKCanvas canvas, int w, int h)
+		{
+			float cx = w * 0.5f;
+			float cy = h * 0.52f;               // slightly below center feels “table-ish”
+			float radius = MathF.Min(w, h) * 0.42f;
+
+			using var hex = BuildHexPath(cx, cy, radius, rotationRadians: 0f);
+
+			using var fill = new SKPaint
+			{
+				IsAntialias = true,
+				Style = SKPaintStyle.Fill,
+				Color = new SKColor(18, 55, 35)   // felt/green-ish
+			};
+
+			using var border = new SKPaint
+			{
+				IsAntialias = true,
+				Style = SKPaintStyle.Stroke,
+				StrokeWidth = 6,
+				Color = new SKColor(40, 100, 70)
+			};
+
+			// soft shadow-ish “rim”
+			using var rim = new SKPaint
+			{
+				IsAntialias = true,
+				Style = SKPaintStyle.Stroke,
+				StrokeWidth = 14,
+				Color = new SKColor(0, 0, 0, 40)
+			};
+
+			canvas.DrawPath(hex, fill);
+			canvas.DrawPath(hex, rim);
+			canvas.DrawPath(hex, border);
+
+			// subtle inner inset for depth
+			using var innerHex = BuildHexPath(cx, cy, radius * 0.94f, rotationRadians: 0f);
+			using var innerBorder = new SKPaint
+			{
+				IsAntialias = true,
+				Style = SKPaintStyle.Stroke,
+				StrokeWidth = 2,
+				Color = new SKColor(255, 255, 255, 20)
+			};
+			canvas.DrawPath(innerHex, innerBorder);
+		}
+
+
+
+		private static void DrawCard(SKCanvas canvas,
+	float x, float y, float w, float h,
+	UnoCardDto? card,
+	bool isFaceUp,
+	bool highlightClickable = false,
+	bool isSelected = false,
+	int selectionNumber = 0)
 		{
 			var r = new SKRect(x, y, x + w, y + h);
 
@@ -685,6 +1254,42 @@ namespace GameClient.Wpf.GameClients
 			float ty = inner.MidY + textPaint.TextSize * 0.35f;
 			textPaint.TextAlign = SKTextAlign.Center;
 			canvas.DrawText(label, tx, ty, textPaint);
+
+			if (selectionNumber > 0)
+			{
+				float badgeR = MathF.Max(10f, w * 0.13f);           // scales with card
+				float bx = r.Left + badgeR + 6f;                    // inset from corner
+				float by = r.Top + badgeR + 6f;
+
+				using var badgeFill = new SKPaint
+				{
+					IsAntialias = true,
+					Style = SKPaintStyle.Fill,
+					Color = new SKColor(220, 40, 40)               // red
+				};
+
+				using var badgeBorder = new SKPaint
+				{
+					IsAntialias = true,
+					Style = SKPaintStyle.Stroke,
+					StrokeWidth = 2f,
+					Color = new SKColor(255, 255, 255, 220)        // light outline
+				};
+
+				using var numPaint = new SKPaint
+				{
+					IsAntialias = true,
+					Color = SKColors.White,
+					TextAlign = SKTextAlign.Center,
+					TextSize = badgeR * 1.15f
+				};
+
+				canvas.DrawCircle(bx, by, badgeR, badgeFill);
+				canvas.DrawCircle(bx, by, badgeR, badgeBorder);
+
+				// vertically center text nicely
+				canvas.DrawText(selectionNumber.ToString(), bx, by + numPaint.TextSize * 0.35f, numPaint);
+			}
 		}
 		private static void DrawCardBack(SKCanvas canvas, float x, float y, float w, float h, bool highlight = false)
 		{

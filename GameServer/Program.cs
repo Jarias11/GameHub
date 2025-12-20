@@ -1,3 +1,4 @@
+// Program.cs
 using GameServer;
 using System.Net.WebSockets;
 using System.Text;
@@ -5,24 +6,28 @@ using System.Text.Json;
 using GameContracts;
 using GameLogic;
 using System.Diagnostics;
-
-
+using GameLogic.SpaceShooter;
 
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
 app.UseWebSockets();
 
-// ── Core hub state ───────────────────────────────────────────────────────────
+// ── JSON options (consistent + slightly faster, avoids extra config per call) ──
+var JsonOpts = new JsonSerializerOptions
+{
+	PropertyNameCaseInsensitive = true
+};
 
+
+// ── Core hub state ───────────────────────────────────────────────────────────
 var roomManager = new RoomManager();
 var clients = new List<ClientConnection>();
 var syncLock = new object();
 var rng = new Random();
 var debugMessages = false;
 
-
-// Register game handlers
+// ── Register game handlers ───────────────────────────────────────────────────
 var handlers = new Dictionary<GameType, IGameHandler>
 {
 	[GameType.Pong] = new PongGameHandler(roomManager, clients, syncLock, rng, SendAsync),
@@ -35,52 +40,71 @@ var handlers = new Dictionary<GameType, IGameHandler>
 	[GameType.WarOnline] = new WarGameHandler(roomManager, clients, syncLock, rng, SendAsync),
 	[GameType.Blackjack] = new BlackjackGameHandler(roomManager, clients, syncLock, rng, SendAsync),
 	[GameType.Uno] = new UnoGameHandler(roomManager, clients, syncLock, rng, SendAsync),
-
+	[GameType.SpaceShooter] = new SpaceShooterGameHandler(roomManager, clients, syncLock, rng, SendAsync),
 };
 
+// ── Fast message routing table (keeps current behavior, but avoids scanning) ──
+// NOTE: Hub/system messages are still handled by the switch in HandleMessageAsync.
+// This dictionary is only for game message types.
+var messageRoutes = new Dictionary<string, IGameHandler>(StringComparer.Ordinal)
+{
+	// Tick-based games
+	["PongInput"] = handlers[GameType.Pong],
+
+	// JumpsOnline
+	["JumpsOnlineInput"] = handlers[GameType.JumpsOnline],
+	["JumpsOnlineStartRequest"] = handlers[GameType.JumpsOnline],
+	["JumpsOnlineRestartRequest"] = handlers[GameType.JumpsOnline],
+
+	// SpaceShooter uses constants
+	[SpaceShooterMsg.Input] = handlers[GameType.SpaceShooter],
+
+	// Add other game message types here over time (Uno, Blackjack, War, etc.)
+};
+
+// ── Tick handlers ────────────────────────────────────────────────────────────
 var tickHandlers = handlers.Values.OfType<ITickableGameHandler>().ToList();
 
-// ── Background tick loop (for games like Pong) ──────────────────────────────
+// ── Background tick loop (cancellable + concurrent per handler) ───────────────
+var stopToken = app.Lifetime.ApplicationStopping;
 
 _ = Task.Run(async () =>
 {
-	const int targetMs = 16;
-	var stopwatch = Stopwatch.StartNew();
+	using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(16.666)); // ~60 Hz
+	var sw = Stopwatch.StartNew();
+	long last = sw.ElapsedTicks;
 
-	while (true)
+	while (!stopToken.IsCancellationRequested &&
+		   await timer.WaitForNextTickAsync(stopToken))
 	{
 		try
 		{
-			var dtSeconds = (float)stopwatch.Elapsed.TotalSeconds;
-			stopwatch.Restart();
-			if (dtSeconds > 0.25f) dtSeconds = 0.25f;
+			long now = sw.ElapsedTicks;
+			float dt = (now - last) / (float)Stopwatch.Frequency;
+			last = now;
 
-			var frameStart = Stopwatch.GetTimestamp();
+			if (dt > 0.25f) dt = 0.25f;
 
+			// Run all tick handlers concurrently so one slow game doesn't stall others
 			var tasks = new Task[tickHandlers.Count];
 			for (int i = 0; i < tickHandlers.Count; i++)
-				tasks[i] = tickHandlers[i].TickAsync(dtSeconds);
+				tasks[i] = tickHandlers[i].TickAsync(dt);
 
 			await Task.WhenAll(tasks);
-
-			var nowTicks = Stopwatch.GetTimestamp();
-			var elapsedMs = (int)((nowTicks - frameStart) * 1000.0 / Stopwatch.Frequency);
-
-			var delay = targetMs - elapsedMs;
-			if (delay > 0) await Task.Delay(delay);
+		}
+		catch (OperationCanceledException)
+		{
+			break; // shutdown
 		}
 		catch (Exception ex)
 		{
-			Console.WriteLine("[TICK LOOP CRASH] " + ex);
+			Console.WriteLine("[TICK LOOP ERROR] " + ex);
 			// keep loop alive
-			await Task.Delay(100);
 		}
 	}
-});
-
+}, stopToken);
 
 // ── WebSocket endpoint ───────────────────────────────────────────────────────
-
 app.Map("/ws", async context =>
 {
 	if (!context.WebSockets.IsWebSocketRequest)
@@ -100,13 +124,13 @@ app.Map("/ws", async context =>
 	Console.WriteLine($"Client connected: {client.ClientId}");
 
 	var buffer = new byte[4 * 1024];
-	using var ms = new MemoryStream();   // <- move this OUTSIDE the loop
+	using var ms = new MemoryStream(); // reused per message
 
 	try
 	{
 		while (socket.State == WebSocketState.Open)
 		{
-			ms.SetLength(0);  // <- reuse existing stream
+			ms.SetLength(0);
 
 			WebSocketReceiveResult result;
 			do
@@ -125,18 +149,21 @@ app.Map("/ws", async context =>
 				}
 
 				ms.Write(buffer, 0, result.Count);
+
+				// Optional safety guard (prevents giant payload OOM / abuse)
+				// if (ms.Length > 256_000) throw new Exception("Message too large");
 			}
 			while (!result.EndOfMessage);
 
 			var jsonBytes = ms.GetBuffer().AsSpan(0, (int)ms.Length);
-			var json = Encoding.UTF8.GetString(jsonBytes);
 
 			if (debugMessages)
 				Console.WriteLine($"Received {jsonBytes.Length} bytes");
 
 			try
 			{
-				var hubMsg = JsonSerializer.Deserialize<HubMessage>(json);
+				// Deserialize directly from UTF-8 bytes (avoids string allocation)
+				var hubMsg = JsonSerializer.Deserialize<HubMessage>(jsonBytes, JsonOpts);
 				if (hubMsg != null)
 				{
 					await HandleMessageAsync(hubMsg, client);
@@ -148,7 +175,6 @@ app.Map("/ws", async context =>
 			}
 		}
 	}
-
 	finally
 	{
 		Console.WriteLine($"Client disconnected: {client.ClientId}");
@@ -159,7 +185,6 @@ app.Map("/ws", async context =>
 			{
 				roomManager.LeaveRoom(client.RoomCode, client.PlayerId, out _);
 			}
-
 
 			clients.Remove(client);
 		}
@@ -183,30 +208,37 @@ async Task HandleMessageAsync(HubMessage msg, ClientConnection client)
 	{
 		case "CreateRoom":
 			await HandleCreateRoom(msg, client);
-			break;
+			return;
 
 		case "JoinRoom":
 			await HandleJoinRoom(msg, client);
-			break;
+			return;
+
 		case "RestartGame":
 			await HandleRestartGame(msg, client);
-			break;
+			return;
+
 		case "LeaveRoom":
 			await HandleLeaveRoom(msg, client);
-			break;
+			return;
+	}
 
-		default:
-			// Route to whichever game handler claims this MessageType
-			var handler = handlers.Values.FirstOrDefault(h => h.HandlesMessageType(msg.MessageType));
-			if (handler != null)
-			{
-				await handler.HandleMessageAsync(msg, client);
-			}
-			else
-			{
-				Console.WriteLine("Unknown MessageType: " + msg.MessageType);
-			}
-			break;
+	// Fast O(1) routing for known game message types
+	if (messageRoutes.TryGetValue(msg.MessageType, out var routedHandler))
+	{
+		await routedHandler.HandleMessageAsync(msg, client);
+		return;
+	}
+
+	// Backward-compatible fallback: scan handlers (keeps "anything that worked" working)
+	var handler = handlers.Values.FirstOrDefault(h => h.HandlesMessageType(msg.MessageType));
+	if (handler != null)
+	{
+		await handler.HandleMessageAsync(msg, client);
+	}
+	else
+	{
+		Console.WriteLine("Unknown MessageType: " + msg.MessageType);
 	}
 }
 
@@ -215,7 +247,7 @@ async Task HandleCreateRoom(HubMessage msg, ClientConnection client)
 	CreateRoomPayload? payload;
 	try
 	{
-		payload = JsonSerializer.Deserialize<CreateRoomPayload>(msg.PayloadJson);
+		payload = JsonSerializer.Deserialize<CreateRoomPayload>(msg.PayloadJson, JsonOpts);
 	}
 	catch
 	{
@@ -273,9 +305,7 @@ async Task HandleCreateRoom(HubMessage msg, ClientConnection client)
 
 				movedClients.Add(other);
 			}
-
 		}
-
 	}
 
 	// 5) Let the game handler know about the new room + joins
@@ -374,7 +404,7 @@ async Task HandleJoinRoom(HubMessage msg, ClientConnection client)
 	JoinRoomPayload? payload;
 	try
 	{
-		payload = JsonSerializer.Deserialize<JoinRoomPayload>(msg.PayloadJson);
+		payload = JsonSerializer.Deserialize<JoinRoomPayload>(msg.PayloadJson, JsonOpts);
 	}
 	catch
 	{
@@ -414,7 +444,6 @@ async Task HandleJoinRoom(HubMessage msg, ClientConnection client)
 
 		lock (syncLock)
 		{
-			// 🔹 Figure out max players for this room
 			slot = FindOpenPlayerSlot(room) ?? "";
 
 			if (string.IsNullOrEmpty(slot))
@@ -426,7 +455,6 @@ async Task HandleJoinRoom(HubMessage msg, ClientConnection client)
 				};
 				goto send;
 			}
-
 
 			roomManager.TryJoinRoom(room.RoomCode, slot, out _);
 			client.RoomCode = room.RoomCode;
@@ -447,7 +475,7 @@ async Task HandleJoinRoom(HubMessage msg, ClientConnection client)
 			PlayerCount = playerCount
 		};
 
-		// 🔹 HERE is the "notify other players" block 🔹
+		// Notify other players
 		if (responsePayload.Success && room != null)
 		{
 			List<ClientConnection> others;
@@ -500,7 +528,7 @@ async Task HandleLeaveRoom(HubMessage msg, ClientConnection client)
 	LeaveRoomPayload? payload;
 	try
 	{
-		payload = JsonSerializer.Deserialize<LeaveRoomPayload>(msg.PayloadJson);
+		payload = JsonSerializer.Deserialize<LeaveRoomPayload>(msg.PayloadJson, JsonOpts);
 	}
 	catch
 	{
@@ -608,14 +636,28 @@ send:
 	await SendAsync(client, response);
 }
 
-
 async Task SendAsync(ClientConnection client, HubMessage msg)
 {
-	if (client.Socket.State != WebSocketState.Open) return;
-	var json = JsonSerializer.Serialize(msg);
-	var bytes = Encoding.UTF8.GetBytes(json);
-	await client.Socket.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None);
+	try
+	{
+		if (client.Socket.State != WebSocketState.Open) return;
+
+		// Keep your current behavior (string JSON), but use consistent options.
+		var json = JsonSerializer.Serialize(msg);
+		var bytes = Encoding.UTF8.GetBytes(json);
+
+		await client.Socket.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None);
+	}
+	catch (WebSocketException)
+	{
+		// client likely disconnected mid-send
+	}
+	catch (ObjectDisposedException)
+	{
+		// socket already disposed
+	}
 }
+
 static string? FindOpenPlayerSlot(Room room)
 {
 	for (int i = 1; i <= room.MaxPlayers; i++)
@@ -628,7 +670,6 @@ static string? FindOpenPlayerSlot(Room room)
 }
 
 // ── Shared hub-side client type ──────────────────────────────────────────────
-
 public class ClientConnection
 {
 	public WebSocket Socket { get; }

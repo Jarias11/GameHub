@@ -106,21 +106,13 @@ namespace GameServer
 		}
 
 		private void StepSimulationForAllRooms(float stepDt)
-		{
-			List<TState> states;
-
-			// 🔹 take a snapshot of the states under lock
-			lock (_syncLock)
-			{
-				states = _rooms.Values.ToList();
-			}
-
-			// 🔹 then simulate OUTSIDE the lock
-			foreach (var state in states)
-			{
-				UpdateState(state, stepDt);
-			}
-		}
+{
+    lock (_syncLock)
+    {
+        foreach (var state in _rooms.Values)
+            UpdateState(state, stepDt);
+    }
+}
 
 		private async Task BroadcastSnapshotsIfNeeded(float dtSeconds)
 		{

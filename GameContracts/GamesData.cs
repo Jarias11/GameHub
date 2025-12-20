@@ -30,7 +30,8 @@ public enum GameType
 	WarOnline,
 	Blackjack,
 	Tetris,
-	Uno
+	Uno,
+	SpaceShooter
 }
 
 public class GameInfo
@@ -200,6 +201,17 @@ public static class GameCatalog
 			Category = GameCategory.Card,
 			Emoji = "🃏",
 			Tagline = "Classic card game",
+			PlayersText = "2-4 Players",
+			IsOnline = true,
+			MaxPlayers = 4
+		},
+		new()
+		{
+			Type = GameType.SpaceShooter,
+			Name = "Space Shooter",
+			Category = GameCategory.Arcade,
+			Emoji = "🚀",
+			Tagline = "Take out the other spaceships",
 			PlayersText = "2-4 Players",
 			IsOnline = true,
 			MaxPlayers = 4

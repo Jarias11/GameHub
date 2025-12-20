@@ -457,11 +457,7 @@ namespace GameLogic.Uno
 			BeginTurnSnapshot(state);
 		}
 
-		private static void SkipNextPlayer(UnoRoomState state)
-		{
-			// skipping means advance once extra
-			AdvanceTurn(state);
-		}
+		
 		private static void SkipOnce(UnoRoomState state)
 		{
 			// Skip = move past the next player
@@ -645,17 +641,18 @@ namespace GameLogic.Uno
 
 			if (needsColorChoice)
 			{
-				// For +4, we should already accumulate the penalty now
+				// Wild/+4: only ONE effect no matter how many were played in this batch
 				if (batchValue == CardValue.WildDrawFour)
 				{
 					state.PendingDrawType = CardValue.WildDrawFour;
-					state.PendingDrawCount += 4 * k; // keeps growing across stacks
+
+					// stack +4 per card in the batch
+					state.PendingDrawCount += 4 * k;
 				}
 
 				state.Phase = UnoPhase.AwaitingWildColorChoice;
 				state.AwaitingColorChoiceFromPlayerId = playerId;
 
-				// Keep active color unchanged until TryChooseColor
 				ApplyUnoPenaltyIfNeededAfterPlay(state, playerId);
 
 				if (hand.Count == 0)
@@ -669,6 +666,7 @@ namespace GameLogic.Uno
 				return true;
 			}
 
+
 			// Chosen color provided (or not needed): update active color
 			if (batchValue == CardValue.Wild || batchValue == CardValue.WildDrawFour)
 				state.ActiveColor = chosenColor!.Value;
@@ -678,34 +676,44 @@ namespace GameLogic.Uno
 			switch (batchValue)
 			{
 				case CardValue.Wild:
-					// just advances once
+					// only one effect: color already set above, just advance once
 					AdvanceTurn(state);
 					break;
 
 				case CardValue.WildDrawFour:
+					// stack +4 per card in the batch
 					state.PendingDrawType = CardValue.WildDrawFour;
 					state.PendingDrawCount += 4 * k;
 					AdvanceTurn(state); // victim
 					break;
 
 				case CardValue.DrawTwo:
+					// still stacks (unchanged)
 					state.PendingDrawType = CardValue.DrawTwo;
 					state.PendingDrawCount += 2 * k;
 					AdvanceTurn(state); // victim
 					break;
 
 				case CardValue.Skip:
-					for (int i = 0; i < k; i++) SkipOnce(state);
+					// stacked skip: advance (1 + k) players total
+					AdvanceSteps(state, 1 + k);
 					break;
 
 				case CardValue.Reverse:
-					if ((k & 1) == 1) ReverseDirection(state);
+					// flip direction as many times as reverses played
+					for (int i = 0; i < k; i++)
+						ReverseDirection(state);
+
+					// 2-player reverse behaves like skip (keep your current behavior),
+					// and it should happen per reverse if you're stacking reverses.
 					if (state.Players.Count == 2)
 					{
-						for (int i = 0; i < k; i++) SkipOnce(state);
+						for (int i = 0; i < k; i++)
+							SkipOnce(state);
 					}
 					else
 					{
+						// after all reverses resolved, pass turn once in the final direction
 						AdvanceTurn(state);
 					}
 					break;
@@ -714,6 +722,7 @@ namespace GameLogic.Uno
 					AdvanceTurn(state);
 					break;
 			}
+
 
 			ApplyUnoPenaltyIfNeededAfterPlay(state, playerId);
 
@@ -729,7 +738,11 @@ namespace GameLogic.Uno
 			return true;
 		}
 
-
+		private static void AdvanceSteps(UnoRoomState state, int steps)
+		{
+			for (int i = 0; i < steps; i++)
+				AdvanceTurn(state);
+		}
 
 
 		private static UnoCard DrawWithReshuffle(UnoRoomState state)
