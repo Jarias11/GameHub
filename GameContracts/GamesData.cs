@@ -31,7 +31,8 @@ public enum GameType
 	Blackjack,
 	Tetris,
 	Uno,
-	SpaceShooter
+	SpaceShooter,
+	Pinball
 }
 
 public class GameInfo
@@ -215,6 +216,16 @@ public static class GameCatalog
 			PlayersText = "2-4 Players",
 			IsOnline = true,
 			MaxPlayers = 4
+		},
+		new()
+		{
+			Type = GameType.Pinball,
+			Name = "Pin Ball",
+			Category = GameCategory.Arcade,
+			Emoji = "🔮",
+			Tagline = "Bounce the ball and score points",
+			PlayersText = "1 Player (offline)",
+			IsOnline = false
 		}
 	};
 

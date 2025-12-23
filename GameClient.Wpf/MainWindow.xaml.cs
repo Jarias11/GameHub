@@ -780,7 +780,7 @@ namespace GameClient.Wpf
 				var json = JsonSerializer.Serialize(msg);
 				var bytes = Encoding.UTF8.GetBytes(json);
 				await _socket.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None);
-				//Log(">> " + msg.MessageType);
+				Log(">> " + msg.MessageType);
 			}
 			catch (Exception ex)
 			{

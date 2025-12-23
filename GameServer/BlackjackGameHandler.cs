@@ -28,6 +28,7 @@ namespace GameServer
 
 		public override bool HandlesMessageType(string messageType)
 			=> messageType == "BlackjackStartRequest"
+			|| messageType == "BlackjackNextRoundRequest"
 			|| messageType == "BlackjackAction"
 			|| messageType == "BlackjackSeatSelect"
 			|| messageType == "BlackjackBetSubmit"
@@ -117,6 +118,9 @@ namespace GameServer
 				case "BlackjackStartRequest":
 					await HandleStart(msg, client);
 					break;
+				case "BlackjackNextRoundRequest":
+					await HandleNextRound(msg, client); // no-op
+					break;
 
 				case "BlackjackAction":
 					await HandleAction(msg, client);
@@ -129,6 +133,45 @@ namespace GameServer
 					break;
 			}
 		}
+
+		private async Task HandleNextRound(HubMessage msg, ClientConnection client)
+		{
+			// Only host can advance rounds
+			if (!string.Equals(client.PlayerId, "P1", StringComparison.OrdinalIgnoreCase))
+				return;
+
+			BlackjackNextRoundRequestPayload? payload;
+			try { payload = JsonSerializer.Deserialize<BlackjackNextRoundRequestPayload>(msg.PayloadJson); }
+			catch { return; }
+			if (payload == null) return;
+
+			lock (_syncLock)
+			{
+				var state = EnsureRoomState(payload.RoomCode);
+
+				// only allow when round is actually complete
+				if (state.Engine.Phase != BlackjackPhase.RoundResults)
+					return;
+
+				// keep the seats; skip lobby; go straight to betting
+				state.UnlockSpectatorsForNextRound();
+				state.RefreshBailoutStatus();
+
+				var seated = state.SeatPlayerIds
+					.Where(pid => !string.IsNullOrEmpty(pid))
+					.Cast<string>()
+					.ToList();
+
+				if (seated.Count == 0)
+					return;
+
+				// Start betting immediately (no seat changes)
+				state.StartBetting(seated);
+			}
+
+			await BroadcastSnapshotAsync(payload.RoomCode);
+		}
+
 		private async Task HandleBailout(HubMessage msg, ClientConnection client)
 		{
 			BlackjackBailoutPayload? payload;
@@ -354,11 +397,8 @@ namespace GameServer
 				var isSeated = state.IsSeated(pid);
 				var submitted = state.BetSubmitted.Contains(pid);
 				var canSplit = state.Engine.CanSplit(pid);
-				var activeHand = (p.ActiveHandIndex == 0) ? p.Hand : p.SplitHand;
-
-				var activeHasStood = (p.ActiveHandIndex == 0) ? p.HasStood : p.SplitHasStood;
-				var activeIsBust = (p.ActiveHandIndex == 0) ? p.IsBust : p.SplitIsBust;
-				state.RefreshBailoutStatus();
+				var mainHand = p.Hand;
+				var splitHand = p.SplitHand;
 
 				payload.Players.Add(new BlackjackPlayerStateDto
 				{
@@ -372,32 +412,39 @@ namespace GameServer
 					CanBailout = state.CanBailout(pid),
 					IsCurrentTurn = state.Engine.CurrentPlayerId == pid,
 					HasSubmittedBet = submitted,
-					HasStood = activeHasStood,
-					IsBust = activeIsBust,
-					HandValue = BlackjackEngine.ComputeHandValue(activeHand),
+
+					// ✅ MAIN HAND ALWAYS
+					Cards = mainHand.Select(card => new BlackjackCardDto
+					{
+						Rank = (int)card.Rank,
+						Suit = (int)card.Suit,
+						IsFaceDown = false
+					}).ToList(),
+
+					HandValue = BlackjackEngine.ComputeHandValue(mainHand),
+					HasStood = p.HasStood,
+					IsBust = p.IsBust,
+
+					// split metadata
+					HasSplit = splitHand.Count > 0,
+					ActiveHandIndex = p.ActiveHandIndex,
+					CanSplit = state.Engine.CanSplit(pid),
+
+					// ✅ SPLIT HAND ALWAYS
+					SplitHandCards = splitHand.Select(card => new BlackjackCardDto
+					{
+						Rank = (int)card.Rank,
+						Suit = (int)card.Suit,
+						IsFaceDown = false
+					}).ToList(),
+
+					SplitHandValue = BlackjackEngine.ComputeHandValue(splitHand),
+					SplitHandIsBust = p.SplitIsBust,
+					SplitHandHasStood = p.SplitHasStood,
+
 					Chips = p.Chips,
 					Bet = submitted ? p.Bet : 0,
 					Result = p.Result,
-					Cards = activeHand.Select(card => new BlackjackCardDto
-					{
-						Rank = (int)card.Rank,
-						Suit = (int)card.Suit,
-						IsFaceDown = false
-					}).ToList(),
-					CanSplit = canSplit,
-					HasSplit = p.SplitHand.Count > 0,
-					ActiveHandIndex = p.ActiveHandIndex,
-
-					SplitHandCards = p.SplitHand.Select(card => new BlackjackCardDto
-					{
-						Rank = (int)card.Rank,
-						Suit = (int)card.Suit,
-						IsFaceDown = false
-					}).ToList(),
-
-					SplitHandValue = BlackjackEngine.ComputeHandValue(p.SplitHand),
-					SplitHandIsBust = BlackjackEngine.ComputeHandValue(p.SplitHand) > 21,
-					SplitHandHasStood = p.SplitHasStood,
 				});
 			}
 

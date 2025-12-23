@@ -10,6 +10,8 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using GameContracts;
+using GameClient.Wpf.Services;
+
 
 namespace GameClient.Wpf.GameClients
 {
@@ -29,6 +31,10 @@ namespace GameClient.Wpf.GameClients
 		private string? _roomCode;
 		private string? _playerId;
 
+		private readonly ObservableCollection<LetterTile> _letterTiles = new();
+		private readonly ObservableCollection<string> _possibleWords = new();
+
+
 		private readonly ObservableCollection<string> _p1Words = new();
 		private readonly ObservableCollection<string> _p2Words = new();
 
@@ -39,12 +45,68 @@ namespace GameClient.Wpf.GameClients
 		private DateTimeOffset? _roundEndUtc;
 		private readonly DispatcherTimer _timer;
 
+		private bool _playedCountdownTicking;
+		private bool _playedAlarm;
+		private bool _playedGameStart;
+		private bool _playedWinLose;
+
+		private sealed class LetterTile
+		{
+			public string Letter { get; set; } = "";
+			public int Value { get; set; }
+			public bool IsRevealed { get; set; }
+		}
+
+		private static class ScrabbleValues
+		{
+			// Standard English Scrabble values
+			public static int GetValue(char upperLetter)
+			{
+				return upperLetter switch
+				{
+					'A' => 1,
+					'E' => 1,
+					'I' => 1,
+					'O' => 1,
+					'U' => 1,
+					'L' => 1,
+					'N' => 1,
+					'S' => 1,
+					'T' => 1,
+					'R' => 1,
+					'D' => 2,
+					'G' => 2,
+					'B' => 3,
+					'C' => 3,
+					'M' => 3,
+					'P' => 3,
+					'F' => 4,
+					'H' => 4,
+					'V' => 4,
+					'W' => 4,
+					'Y' => 4,
+					'K' => 5,
+					'J' => 8,
+					'X' => 8,
+					'Q' => 10,
+					'Z' => 10,
+					_ => 1
+				};
+			}
+		}
+
+
 		public AnagramGameClient()
 		{
 			InitializeComponent();
 
+			LetterCards.ItemsSource = _letterTiles;
+
+
 			P1WordsList.ItemsSource = _p1Words;
 			P2WordsList.ItemsSource = _p2Words;
+			PossibleWordsList.ItemsSource = _possibleWords;
+
 
 			// Default: no room yet → hide config & input panels until we know who we are
 			OptionsPanel.Visibility = Visibility.Collapsed;
@@ -84,8 +146,13 @@ namespace GameClient.Wpf.GameClients
 			_p2Score = 0;
 			P1ScoreText.Text = "0";
 			P2ScoreText.Text = "0";
-			LettersText.Text = string.Empty;
+			_letterTiles.Clear();
+			_possibleWords.Clear();
+
+			LetterCards.Items.Refresh(); // optional, but fine
 			RoundInfoPanel.Visibility = Visibility.Collapsed;
+			SetPossibleWordsVisible(false);
+
 
 			// Decide what panels to show based on who we are.
 			if (string.IsNullOrEmpty(_roomCode) || string.IsNullOrEmpty(_playerId))
@@ -190,12 +257,30 @@ namespace GameClient.Wpf.GameClients
 			{
 				_p1Words.Clear();
 				_p2Words.Clear();
+				_possibleWords.Clear();
+
 				_p1Score = 0;
 				_p2Score = 0;
 				P1ScoreText.Text = "0";
 				P2ScoreText.Text = "0";
 
-				LettersText.Text = payload.Letters;
+				SetPossibleWordsVisible(false);
+
+				_playedCountdownTicking = false;
+				_playedAlarm = false;
+				_playedGameStart = false;
+				_playedWinLose = false;
+
+				// play game start once per round
+				if (!_playedGameStart)
+				{
+					_playedGameStart = true;
+					SoundService.PlayAnagramEffect(AnagramSoundEffect.GameStart);
+				}
+
+				BuildLetterTiles(payload.Letters);
+				LetterCards.UpdateLayout(); // helps generate item containers
+				_ = RevealTilesOneByOneAsync(); // fire-and-forget (UI animation sequence)
 				RoundInfoPanel.Visibility = Visibility.Visible;
 
 				StatusText.Text = payload.Message ?? $"Round {payload.RoundNumber} started.";
@@ -220,6 +305,120 @@ namespace GameClient.Wpf.GameClients
 				_timer.Start();
 			});
 		}
+		private void BuildLetterTiles(string letters)
+		{
+			_letterTiles.Clear();
+			if (string.IsNullOrWhiteSpace(letters))
+				return;
+
+			foreach (char ch in letters.Trim())
+			{
+				if (!char.IsLetter(ch)) continue;
+
+				char upper = char.ToUpperInvariant(ch);
+				_letterTiles.Add(new LetterTile
+				{
+					Letter = upper.ToString(),
+					Value = ScrabbleValues.GetValue(upper),
+					IsRevealed = false
+				});
+			}
+		}
+
+		private async Task RevealTilesOneByOneAsync()
+		{
+			// small pause so UI is visible before first flip
+			await Task.Delay(150);
+
+			for (int i = 0; i < _letterTiles.Count; i++)
+			{
+				await FlipRevealTileAsync(i);
+				await Task.Delay(120); // spacing between flips
+			}
+		}
+
+		private async Task FlipRevealTileAsync(int index)
+		{
+			if (index < 0 || index >= _letterTiles.Count) return;
+
+			// Try to get the container for a bit (layout can be late)
+			FrameworkElement? container = null;
+
+			for (int attempt = 0; attempt < 20; attempt++) // ~20 frames max
+			{
+				container = (FrameworkElement?)LetterCards.ItemContainerGenerator.ContainerFromIndex(index);
+				if (container != null) break;
+
+				// let WPF process layout/render
+				await Dispatcher.Yield(DispatcherPriority.Loaded);
+			}
+
+			// If we STILL can't animate, at least reveal the tile so it never stays "?"
+			if (container == null)
+			{
+				_letterTiles[index].IsRevealed = true;
+				LetterCards.Items.Refresh();
+				return;
+			}
+
+			var border = FindVisualChild<Border>(container);
+			if (border == null)
+			{
+				_letterTiles[index].IsRevealed = true;
+				LetterCards.Items.Refresh();
+				return;
+			}
+
+			if (border.RenderTransform is not ScaleTransform st)
+			{
+				st = new ScaleTransform(1, 1);
+				border.RenderTransform = st;
+				border.RenderTransformOrigin = new Point(0.5, 0.5);
+			}
+
+			var shrink = new DoubleAnimation
+			{
+				To = 0,
+				Duration = TimeSpan.FromMilliseconds(90),
+				EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+			};
+
+			var tcs1 = new TaskCompletionSource<bool>();
+			shrink.Completed += (_, __) => tcs1.TrySetResult(true);
+			st.BeginAnimation(ScaleTransform.ScaleXProperty, shrink);
+			await tcs1.Task;
+
+			// reveal during "edge-on"
+			_letterTiles[index].IsRevealed = true;
+			LetterCards.Items.Refresh();
+
+			var expand = new DoubleAnimation
+			{
+				To = 1,
+				Duration = TimeSpan.FromMilliseconds(110),
+				EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+			};
+
+			var tcs2 = new TaskCompletionSource<bool>();
+			expand.Completed += (_, __) => tcs2.TrySetResult(true);
+			st.BeginAnimation(ScaleTransform.ScaleXProperty, expand);
+			await tcs2.Task;
+		}
+
+
+		private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+		{
+			int count = VisualTreeHelper.GetChildrenCount(parent);
+			for (int i = 0; i < count; i++)
+			{
+				var child = VisualTreeHelper.GetChild(parent, i);
+				if (child is T typed) return typed;
+				var deeper = FindVisualChild<T>(child);
+				if (deeper != null) return deeper;
+			}
+			return null;
+		}
+
 
 		private void HandleWordResult(HubMessage msg)
 		{
@@ -241,11 +440,13 @@ namespace GameClient.Wpf.GameClients
 					{
 						if (payload.Accepted)
 						{
+							SoundService.PlayAnagramEffect(AnagramSoundEffect.Success);
 							_p1Words.Add(payload.Word);
 							ClearInput(P1WordInput);
 						}
 						else
 						{
+							SoundService.PlayAnagramEffect(AnagramSoundEffect.Wrong);
 							ShowInvalidWordFeedback(P1WordInput, payload.Reason);
 						}
 					}
@@ -261,11 +462,13 @@ namespace GameClient.Wpf.GameClients
 					{
 						if (payload.Accepted)
 						{
+							SoundService.PlayAnagramEffect(AnagramSoundEffect.Success);
 							_p2Words.Add(payload.Word);
 							ClearInput(P2WordInput);
 						}
 						else
 						{
+							SoundService.PlayAnagramEffect(AnagramSoundEffect.Wrong);
 							ShowInvalidWordFeedback(P2WordInput, payload.Reason);
 						}
 					}
@@ -297,6 +500,7 @@ namespace GameClient.Wpf.GameClients
 			{
 				_p1Words.Clear();
 				_p2Words.Clear();
+				_possibleWords.Clear();
 				_p1Score = 0;
 				_p2Score = 0;
 
@@ -317,10 +521,44 @@ namespace GameClient.Wpf.GameClients
 							_p2Words.Add(w);
 					}
 				}
+				// Play win/lose only for real players (not spectators), and only once
+				if (!_playedWinLose && (_playerId == "P1" || _playerId == "P2"))
+				{
+					_playedWinLose = true;
+
+					// Determine outcome for THIS client
+					int myScore = (_playerId == "P1") ? _p1Score : _p2Score;
+					int otherScore = (_playerId == "P1") ? _p2Score : _p1Score;
+
+					if (myScore > otherScore)
+						SoundService.PlayAnagramEffect(AnagramSoundEffect.Winner);
+					else if (myScore < otherScore)
+						SoundService.PlayAnagramEffect(AnagramSoundEffect.Loser);
+					// else tie → play nothing (or add Tie sound later)
+				}
+
+				var allFound = payload.Players
+	.SelectMany(p => p.AcceptedWords ?? Array.Empty<string>())
+	.Select(w => w.ToLowerInvariant())
+	.ToHashSet();
+				foreach (var w in (payload.PossibleWords ?? Array.Empty<string>()))
+				{
+					// If you want "all possible", remove this if-check.
+					// If you want "missed", keep it:
+					if (!allFound.Contains(w.ToLowerInvariant()))
+						_possibleWords.Add(w);
+				}
+				SetPossibleWordsVisible(true);
 
 				StatusText.Text = payload.Message ?? "Round over.";
+
 				UpdateTimerText(0);
 			});
+		}
+		private void SetPossibleWordsVisible(bool visible)
+		{
+			PossibleWordsPanel.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+			ColPossible.Width = visible ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
 		}
 
 		private void HandleReset(HubMessage msg)
@@ -336,13 +574,22 @@ namespace GameClient.Wpf.GameClients
 			{
 				_p1Words.Clear();
 				_p2Words.Clear();
+				_possibleWords.Clear();
+
 				_p1Score = 0;
 				_p2Score = 0;
 				P1ScoreText.Text = "0";
 				P2ScoreText.Text = "0";
 
-				LettersText.Text = string.Empty;
+				_letterTiles.Clear();
+				LetterCards.Items.Refresh();
 				RoundInfoPanel.Visibility = Visibility.Collapsed;
+				SetPossibleWordsVisible(false);
+
+				_playedCountdownTicking = false;
+				_playedAlarm = false;
+				_playedGameStart = false;
+				_playedWinLose = false;
 
 				StatusText.Text = payload.Message;
 
@@ -488,8 +735,23 @@ namespace GameClient.Wpf.GameClients
 
 			UpdateTimerText(seconds);
 
+			// Start ticking once when we enter the last 5 seconds (5..1)
+			if (seconds > 0 && seconds <= 5 && !_playedCountdownTicking)
+			{
+				_playedCountdownTicking = true;
+				SoundService.PlayAnagramEffect(AnagramSoundEffect.ClockTicking);
+			}
+
+
 			if (seconds <= 0)
 			{
+
+				if (!_playedAlarm)
+				{
+					_playedAlarm = true;
+					SoundService.PlayAnagramEffect(AnagramSoundEffect.ClockAlarm);
+				}
+
 				_roundActive = false;
 				_timer.Stop();
 

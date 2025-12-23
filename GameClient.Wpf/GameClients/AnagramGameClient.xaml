@@ -1,8 +1,15 @@
 <UserControl x:Class="GameClient.Wpf.GameClients.AnagramGameClient"
 			 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-			 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+			 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+			 xmlns:local="clr-namespace:GameClient.Wpf.Converters">
 	<UserControl.Resources>
+
+
 		<ResourceDictionary>
+			<local:BoolToOpacityConverter x:Key="BoolToOpacityConverter"/>
+			<local:InverseBoolToOpacityConverter x:Key="InverseBoolToOpacityConverter"/>
+
+
 			<ResourceDictionary.MergedDictionaries>
 				<!-- Adjust the Source path if your styles folder is different -->
 				<ResourceDictionary Source="AnagramGameStyles.xaml"/>
@@ -86,9 +93,67 @@
 					Visibility="Collapsed"
 					HorizontalAlignment="Center"
 					Margin="0,0,0,8">
-			<TextBlock x:Name="LettersText"
-					   Text="ABCDE"
-					   Style="{StaticResource AnagramLettersText}"/>
+			<ItemsControl x:Name="LetterCards"
+						  Margin="0,6,0,10"
+						  HorizontalAlignment="Center">
+				<ItemsControl.ItemsPanel>
+					<ItemsPanelTemplate>
+						<StackPanel Orientation="Horizontal"/>
+					</ItemsPanelTemplate>
+				</ItemsControl.ItemsPanel>
+
+				<ItemsControl.ItemTemplate>
+					<DataTemplate>
+						<Border Width="56"
+								Height="72"
+								Margin="6,0"
+								CornerRadius="10"
+								Background="#1E1E24"
+								BorderBrush="#3A3A46"
+								BorderThickness="1"
+								SnapsToDevicePixels="True">
+							<Border.RenderTransform>
+								<!-- We animate ScaleX to simulate a flip -->
+								<ScaleTransform x:Name="CardFlipScale"
+												ScaleX="1"
+												ScaleY="1"/>
+							</Border.RenderTransform>
+							<Border.RenderTransformOrigin>0.5,0.5</Border.RenderTransformOrigin>
+
+							<Grid>
+								<!-- Scrabble value in corner -->
+								<TextBlock Text="{Binding Value}"
+										   Margin="6,4,0,0"
+										   HorizontalAlignment="Left"
+										   VerticalAlignment="Top"
+										   Foreground="#B8B8C6"
+										   FontSize="12"
+										   FontWeight="SemiBold"
+										   Opacity="{Binding IsRevealed, Converter={StaticResource BoolToOpacityConverter}}"/>
+
+								<!-- Letter big in center -->
+								<TextBlock Text="{Binding Letter}"
+										   HorizontalAlignment="Center"
+										   VerticalAlignment="Center"
+										   Foreground="White"
+										   FontSize="30"
+										   FontWeight="Bold"
+										   Opacity="{Binding IsRevealed, Converter={StaticResource BoolToOpacityConverter}}"/>
+
+								<!-- Back of card (when hidden) -->
+								<TextBlock Text="?"
+										   HorizontalAlignment="Center"
+										   VerticalAlignment="Center"
+										   Foreground="#7C7C8A"
+										   FontSize="28"
+										   FontWeight="Bold"
+										   Opacity="{Binding IsRevealed, Converter={StaticResource InverseBoolToOpacityConverter}}"/>
+							</Grid>
+						</Border>
+					</DataTemplate>
+				</ItemsControl.ItemTemplate>
+			</ItemsControl>
+
 			<TextBlock x:Name="TimerText"
 					   Text="00:00"
 					   Style="{StaticResource AnagramTimerText}"/>
@@ -100,11 +165,14 @@
 				   Style="{StaticResource AnagramDivider}"/>
 
 		<!-- ── Player panels ─────────────────────────────────────────────── -->
-		<Grid Grid.Row="3"
-			  x:Name="PlayersGrid">
+		<Grid Grid.Row="3" x:Name="PlayersGrid">
 			<Grid.ColumnDefinitions>
-				<ColumnDefinition Width="*"/>
-				<ColumnDefinition Width="*"/>
+				<ColumnDefinition x:Name="ColP1"
+						Width="*"/>
+				<ColumnDefinition x:Name="ColP2"
+						Width="*"/>
+				<ColumnDefinition x:Name="ColPossible"
+						Width="0"/>
 			</Grid.ColumnDefinitions>
 
 			<!-- P1 panel -->
@@ -223,14 +291,37 @@
 					</StackPanel>
 				</Grid>
 			</Border>
-		</Grid>
+			<Border
+				x:Name="PossibleWordsPanel"
+				Grid.Column="2"
+				Margin="8,0,0,0"
+				Style="{StaticResource AnagramPlayerPanel}"
+				Visibility="Collapsed">
+				<Grid>
+					<Grid.RowDefinitions>
+						<RowDefinition Height="Auto"/>
+						<RowDefinition Height="*"/>
+					</Grid.RowDefinitions>
 
-		<!-- ── Status / Round summary text ───────────────────────────────── -->
-		<TextBlock x:Name="StatusText"
-				   Grid.Row="4"
-				   Margin="0,8,0,0"
-				   Text=""
-				   HorizontalAlignment="Center"
-				   Style="{StaticResource AnagramStatusText}"/>
+					<TextBlock Text="Possible Words"
+							   Style="{StaticResource AnagramPlayerHeader}"
+							   Margin="0,0,0,4"/>
+
+					<ScrollViewer Grid.Row="1">
+						<ItemsControl x:Name="PossibleWordsList"
+									  Style="{StaticResource AnagramWordsListStyle}"/>
+					</ScrollViewer>
+				</Grid>
+			</Border>
+
+	</Grid>
+
+	<!-- ── Status / Round summary text ───────────────────────────────── -->
+	<TextBlock x:Name="StatusText"
+			   Grid.Row="4"
+			   Margin="0,8,0,0"
+			   Text=""
+			   HorizontalAlignment="Center"
+			   Style="{StaticResource AnagramStatusText}"/>
 	</Grid>
 </UserControl>

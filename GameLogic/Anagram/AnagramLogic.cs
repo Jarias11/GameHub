@@ -93,7 +93,7 @@ namespace GameLogic.Anagram
 			}
 
 			// At this point, the word is accepted.
-			int points = word.Length; // simple rule: length-based scoring
+			int points = ScoreScrabble(word);
 			player.Score += points;
 			player.AcceptedWords.Add(word);
 
@@ -158,5 +158,79 @@ namespace GameLogic.Anagram
 
 			return true;
 		}
+		public static string[] GenerateAllPossibleWords(string letters, int minLen)
+		{
+			if (string.IsNullOrWhiteSpace(letters))
+				return Array.Empty<string>();
+
+			var pool = letters.Trim().ToLowerInvariant();
+
+			// Scan dictionary once at round end (fine because it’s NOT a hot path)
+			var results = new List<string>(512);
+
+			foreach (var word in WordDictionary.AllWords)
+			{
+				if (word.Length < minLen) continue;
+				if (CanBuildFromLetters(word, pool))
+					results.Add(word);
+			}
+
+			// Sort: longer first then alphabetical (or score-based if you want)
+			results.Sort((a, b) =>
+			{
+				int len = b.Length.CompareTo(a.Length);
+				if (len != 0) return len;
+				return string.CompareOrdinal(a, b);
+			});
+
+			// Optional: cap to avoid UI spam
+			const int MaxShow = 250;
+			if (results.Count > MaxShow)
+				results.RemoveRange(MaxShow, results.Count - MaxShow);
+
+			return results.ToArray();
+		}
+
+
+		private static int ScoreScrabble(string word)
+		{
+			int score = 0;
+			foreach (char ch in word)
+			{
+				char upper = char.ToUpperInvariant(ch);
+				score += upper switch
+				{
+					'A' => 1,
+					'E' => 1,
+					'I' => 1,
+					'O' => 1,
+					'U' => 1,
+					'L' => 1,
+					'N' => 1,
+					'S' => 1,
+					'T' => 1,
+					'R' => 1,
+					'D' => 2,
+					'G' => 2,
+					'B' => 3,
+					'C' => 3,
+					'M' => 3,
+					'P' => 3,
+					'F' => 4,
+					'H' => 4,
+					'V' => 4,
+					'W' => 4,
+					'Y' => 4,
+					'K' => 5,
+					'J' => 8,
+					'X' => 8,
+					'Q' => 10,
+					'Z' => 10,
+					_ => 0
+				};
+			}
+			return score;
+		}
+
 	}
 }

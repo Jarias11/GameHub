@@ -741,7 +741,7 @@ namespace GameClient.Wpf.GameClients
 			float cx = w * 0.5f;
 			float cy = h * 0.52f;
 
-			float cardW = 50;
+			float cardW = 70;
 			float cardH = cardW * 1.4f;
 
 			// deck on left, discard on right

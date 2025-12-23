@@ -93,6 +93,11 @@ namespace GameContracts
 		public bool IsFaceDown { get; set; } // true for dealer hole card when hidden
 	}
 
+	public sealed class BlackjackNextRoundRequestPayload
+	{
+		public string RoomCode { get; set; } = "";
+	}
+
 	public class BlackjackPlayerStateDto
 	{
 		/// <summary>Room-level player id ("P1", "P2", "P3", "P4").</summary>

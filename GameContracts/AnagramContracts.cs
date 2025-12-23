@@ -168,6 +168,8 @@ namespace GameContracts
 		/// Optional message like "P1 wins!" or "It's a tie!".
 		/// </summary>
 		public string? Message { get; set; }
+
+		public string[] PossibleWords { get; set; } = Array.Empty<string>();
 	}
 
 	/// <summary>

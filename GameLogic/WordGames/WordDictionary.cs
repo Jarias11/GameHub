@@ -22,4 +22,6 @@ public static class WordDictionary
 
     public static bool IsValid(string word) =>
         words.Contains(word.ToLower());
+
+        public static IEnumerable<string> AllWords => words;
 }

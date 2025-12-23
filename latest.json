@@ -1,5 +1,5 @@
 {
-	"version": "1.0.0.9",
+	"version": "1.0.0.10",
 	"url": "https://github.com/Jarias11/GameHub/releases/download/v1.0.9/GameHub.exe",
-	"notes": "Added SpaceShooter game, fixed ui in uno, and improved overall performance."
+	"notes": "Improved Anagram, Blackjack, and Checkers"
 }

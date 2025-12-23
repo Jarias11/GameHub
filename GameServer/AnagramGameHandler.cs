@@ -139,8 +139,12 @@ namespace GameServer
 				state.Status = AnagramRoundStatus.Completed;
 				state.RoundEndUtc = DateTimeOffset.UtcNow; // optional: snap to now
 
+				var possible = AnagramLogic.GenerateAllPossibleWords(state.Letters, MinWordLength);
+
 				var messageText = BuildWinnerMessage(state);
 				summary = AnagramLogic.BuildRoundSummary(state, messageText);
+
+				summary.PossibleWords = possible;
 
 				roomClients = _clients
 					.Where(c => c.RoomCode == roomCode)
@@ -320,6 +324,9 @@ namespace GameServer
 					{
 						var summaryMessage = BuildWinnerMessage(state);
 						roundSummaryPayload = AnagramLogic.BuildRoundSummary(state, summaryMessage);
+						roundSummaryPayload.PossibleWords =
+	AnagramLogic.GenerateAllPossibleWords(state.Letters, MinWordLength);
+
 					}
 
 					roomClients = _clients.Where(c => c.RoomCode == roomCode).ToList();
@@ -375,6 +382,9 @@ namespace GameServer
 					{
 						var summaryMessage = BuildWinnerMessage(state);
 						roundSummaryPayload = AnagramLogic.BuildRoundSummary(state, summaryMessage);
+						roundSummaryPayload.PossibleWords =
+	AnagramLogic.GenerateAllPossibleWords(state.Letters, MinWordLength);
+
 					}
 
 					roomClients = _clients.Where(c => c.RoomCode == roomCode).ToList();

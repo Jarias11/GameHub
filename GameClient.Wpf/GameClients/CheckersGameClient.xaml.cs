@@ -11,6 +11,7 @@ using GameContracts;
 using SkiaSharp;
 using SkiaSharp.Views.Desktop;
 using SkiaSharp.Views.WPF;
+using GameClient.Wpf.Services;
 
 namespace GameClient.Wpf.GameClients
 {
@@ -44,6 +45,10 @@ namespace GameClient.Wpf.GameClients
 		private int? _lastFromCol;
 		private int? _lastToRow;
 		private int? _lastToCol;
+		private bool _flipBoardForMe;
+
+		private int? _prevLastFromRow, _prevLastFromCol, _prevLastToRow, _prevLastToCol;
+		private bool _hasEverReceivedState;
 
 		// Local UI state
 		private int? _hoverRow;
@@ -88,6 +93,10 @@ namespace GameClient.Wpf.GameClients
 			_candidateMoves.Clear();
 			_hoverRow = _hoverCol = null;
 			_isShaking = false;
+
+			_prevLastFromRow = _prevLastFromCol = _prevLastToRow = _prevLastToCol = null;
+			_hasEverReceivedState = false;
+
 			StatusText.Text = "Waiting for server...";
 			SideText.Text = "Side: -";
 			BoardSurface.InvalidateVisual();
@@ -133,6 +142,11 @@ namespace GameClient.Wpf.GameClients
 			_redPlayerId = payload.RedPlayerId ?? string.Empty;
 			_blackPlayerId = payload.BlackPlayerId ?? string.Empty;
 
+			// Flip for Black so your assigned side is at the bottom.
+			// Red already starts bottom in server coords, so Red does NOT flip.
+			_flipBoardForMe = !string.IsNullOrEmpty(_playerId) && _playerId == _blackPlayerId;
+
+
 			_isStarted = payload.IsStarted;
 			_isGameOver = payload.IsGameOver;
 			_currentPlayerId = payload.CurrentPlayerId;
@@ -141,10 +155,40 @@ namespace GameClient.Wpf.GameClients
 
 			_forcedFromRow = payload.ForcedFromRow;
 			_forcedFromCol = payload.ForcedFromCol;
+			bool payloadHasMove =
+	payload.LastFromRow.HasValue && payload.LastFromCol.HasValue &&
+	payload.LastToRow.HasValue && payload.LastToCol.HasValue;
+
+			// We consider it "new" if:
+			// - payload has a move AND
+			// - either we never had a move before, OR it differs from the previous move
+			bool isNewMove =
+				payloadHasMove &&
+				(
+					!_prevLastFromRow.HasValue || !_prevLastFromCol.HasValue ||
+					!_prevLastToRow.HasValue || !_prevLastToCol.HasValue ||
+					payload.LastFromRow != _prevLastFromRow ||
+					payload.LastFromCol != _prevLastFromCol ||
+					payload.LastToRow != _prevLastToRow ||
+					payload.LastToCol != _prevLastToCol
+				);
+
+
+
 			_lastFromRow = payload.LastFromRow;
 			_lastFromCol = payload.LastFromCol;
 			_lastToRow = payload.LastToRow;
 			_lastToCol = payload.LastToCol;
+
+			_hasEverReceivedState = true;
+			_prevLastFromRow = _lastFromRow;
+			_prevLastFromCol = _lastFromCol;
+			_prevLastToRow = _lastToRow;
+			_prevLastToCol = _lastToCol;
+
+			if (isNewMove)
+				SoundService.PlayCheckersEffect(CheckersSoundEffect.CheckersMove);
+
 
 			// Reset local selection if the game ended or turn changed.
 			if (_isGameOver ||
@@ -177,7 +221,8 @@ namespace GameClient.Wpf.GameClients
 		private void BoardSurface_OnMouseMove(object sender, MouseEventArgs e)
 		{
 			var pt = e.GetPosition(BoardSurface);
-			if (!TryMapPointToCell(pt.X, pt.Y, out var row, out var col))
+
+			if (!TryMapPointToCell(pt.X, pt.Y, out var viewRow, out var viewCol))
 			{
 				if (_hoverRow != null || _hoverCol != null)
 				{
@@ -186,6 +231,8 @@ namespace GameClient.Wpf.GameClients
 				}
 				return;
 			}
+
+			ViewToServer(viewRow, viewCol, out var row, out var col);
 
 			if (_hoverRow != row || _hoverCol != col)
 			{
@@ -198,8 +245,11 @@ namespace GameClient.Wpf.GameClients
 		private async void BoardSurface_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
 		{
 			var pt = e.GetPosition(BoardSurface);
-			if (!TryMapPointToCell(pt.X, pt.Y, out var row, out var col))
+			if (!TryMapPointToCell(pt.X, pt.Y, out var viewRow, out var viewCol))
 				return;
+
+			ViewToServer(viewRow, viewCol, out var row, out var col);
+
 
 			if (_isGameOver || !_isStarted)
 				return;
@@ -250,6 +300,7 @@ namespace GameClient.Wpf.GameClients
 					? "Click one of the highlighted squares to move."
 					: "No legal moves for this piece.";
 
+
 				BoardSurface.InvalidateVisual();
 				return;
 			}
@@ -289,6 +340,34 @@ namespace GameClient.Wpf.GameClients
 					_candidateMoves.Clear();
 					BoardSurface.InvalidateVisual();
 				}
+			}
+		}
+		// If flipped: view(0,0) corresponds to server(7,7) (180° rotate)
+		private void ViewToServer(int viewRow, int viewCol, out int serverRow, out int serverCol)
+		{
+			if (_flipBoardForMe)
+			{
+				serverRow = (BoardSize - 1) - viewRow;
+				serverCol = (BoardSize - 1) - viewCol;
+			}
+			else
+			{
+				serverRow = viewRow;
+				serverCol = viewCol;
+			}
+		}
+
+		private void ServerToView(int serverRow, int serverCol, out int viewRow, out int viewCol)
+		{
+			if (_flipBoardForMe)
+			{
+				viewRow = (BoardSize - 1) - serverRow;
+				viewCol = (BoardSize - 1) - serverCol;
+			}
+			else
+			{
+				viewRow = serverRow;
+				viewCol = serverCol;
 			}
 		}
 
@@ -353,18 +432,20 @@ namespace GameClient.Wpf.GameClients
 				Color = new SKColor(0, 255, 0, 80)
 			};
 
-			for (int row = 0; row < BoardSize; row++)
+			for (int viewRow = 0; viewRow < BoardSize; viewRow++)
 			{
-				for (int col = 0; col < BoardSize; col++)
+				for (int viewCol = 0; viewCol < BoardSize; viewCol++)
 				{
-					float x = boardX + col * cellSize;
-					float y = boardY + row * cellSize;
+					ViewToServer(viewRow, viewCol, out var row, out var col);
+
+					float x = boardX + viewCol * cellSize;
+					float y = boardY + viewRow * cellSize;
 					var rect = new SKRect(x, y, x + cellSize, y + cellSize);
 
-					bool isDark = ((row + col) & 1) == 1;
+					bool isDark = ((viewRow + viewCol) & 1) == 1;
 					canvas.DrawRect(rect, isDark ? darkPaint : lightPaint);
 
-					// Candidate move marker
+					// Candidate move marker (candidateMoves are stored in server coords)
 					if (_candidateMoves.Any(m => m.row == row && m.col == col))
 					{
 						float cx = x + cellSize / 2f;
@@ -372,20 +453,21 @@ namespace GameClient.Wpf.GameClients
 						canvas.DrawCircle(cx, cy, cellSize * 0.17f, candidatePaint);
 					}
 
-					// Last move highlight
+					// Last move highlight (stored in server coords)
 					if ((_lastFromRow == row && _lastFromCol == col) ||
 						(_lastToRow == row && _lastToCol == col))
 					{
 						canvas.DrawRect(rect, lastMovePaint);
 					}
 
-					// Hover highlight
+					// Hover highlight (stored in server coords)
 					if (_hoverRow == row && _hoverCol == col)
 					{
 						canvas.DrawRect(rect, highlightPaint);
 					}
 				}
 			}
+
 
 			// Draw pieces
 			using var redPaint = new SKPaint { Color = new SKColor(220, 60, 60), IsAntialias = true };
@@ -416,26 +498,26 @@ namespace GameClient.Wpf.GameClients
 			double shakeElapsedMs = (now - _shakeStart).TotalMilliseconds;
 			if (shakeElapsedMs > 250) _isShaking = false;
 
-			for (int row = 0; row < BoardSize; row++)
+			for (int viewRow = 0; viewRow < BoardSize; viewRow++)
 			{
-				for (int col = 0; col < BoardSize; col++)
+				for (int viewCol = 0; viewCol < BoardSize; viewCol++)
 				{
+					ViewToServer(viewRow, viewCol, out var row, out var col);
+
 					var cell = _cells[row * BoardSize + col];
 					if (cell == CheckersCell.Empty)
 						continue;
 
-					float x = boardX + col * cellSize;
-					float y = boardY + row * cellSize;
+					float x = boardX + viewCol * cellSize;
+					float y = boardY + viewRow * cellSize;
 					float cx = x + cellSize / 2f;
 					float cy = y + cellSize / 2f;
 					float radius = cellSize * 0.38f;
 
-					// Shake offset for selected piece
+					// Shake offset for selected piece (selection stored in server coords)
 					float offsetX = 0;
 					float offsetY = 0;
-					if (_isShaking &&
-						_selectedRow == row &&
-						_selectedCol == col)
+					if (_isShaking && _selectedRow == row && _selectedCol == col)
 					{
 						double t = shakeElapsedMs / 40.0;
 						offsetX = (float)(Math.Sin(t) * 3.0);
@@ -448,11 +530,8 @@ namespace GameClient.Wpf.GameClients
 					canvas.DrawCircle(cx + offsetX, cy + offsetY, radius, fillPaint);
 					canvas.DrawCircle(cx + offsetX, cy + offsetY, radius, strokePaint);
 
-					// King ring
 					if (cell == CheckersCell.RedKing || cell == CheckersCell.BlackKing)
-					{
 						canvas.DrawCircle(cx + offsetX, cy + offsetY, radius * 0.6f, kingPaint);
-					}
 
 					// Selected outline
 					if (_selectedRow == row && _selectedCol == col)
@@ -468,6 +547,53 @@ namespace GameClient.Wpf.GameClients
 					}
 				}
 			}
+
+			if (_isGameOver)
+			{
+				// Darken everything
+				using var dimPaint = new SKPaint
+				{
+					Color = new SKColor(0, 0, 0, 170),
+					Style = SKPaintStyle.Fill
+				};
+				canvas.DrawRect(new SKRect(0, 0, width, height), dimPaint);
+
+				bool amPlayer = !string.IsNullOrWhiteSpace(_playerId) &&
+								(_playerId == _redPlayerId || _playerId == _blackPlayerId);
+
+				bool iWon = amPlayer && !string.IsNullOrWhiteSpace(_winnerPlayerId) && _winnerPlayerId == _playerId;
+
+				string title =
+					!amPlayer ? "GAME OVER" :
+					iWon ? "YOU WIN" :
+					"You Lose";
+
+				string subtitle =
+					string.IsNullOrWhiteSpace(_winnerPlayerId) ? (_statusMessage ?? "") :
+					$"Winner: {_winnerPlayerId}";
+
+				// Draw centered text
+				float titleSize = MathF.Min(width, height) * 0.09f;
+				float subSize = MathF.Min(width, height) * 0.045f;
+
+				using var titlePaint = new SKPaint { Color = SKColors.White, IsAntialias = true };
+				using var subPaint = new SKPaint { Color = new SKColor(220, 220, 220), IsAntialias = true };
+
+				using var titleFont = new SKFont(SKTypeface.Default, titleSize);
+				using var subFont = new SKFont(SKTypeface.Default, subSize);
+
+				float titleW = titleFont.MeasureText(title, titlePaint);
+				float subW = subFont.MeasureText(subtitle, subPaint);
+
+				float cx = width / 2f;
+				float cy = height / 2f;
+
+				canvas.DrawText(title, cx - titleW / 2f, cy, titleFont, titlePaint);
+				if (!string.IsNullOrWhiteSpace(subtitle))
+					canvas.DrawText(subtitle, cx - subW / 2f, cy + titleSize * 0.9f, subFont, subPaint);
+			}
+
+
 		}
 
 		// ==== Board math & local move helper ================================

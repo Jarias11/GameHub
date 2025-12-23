@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Microsoft.VisualBasic;
 
 namespace GameClient.Wpf.Services
 {
@@ -14,6 +15,29 @@ namespace GameClient.Wpf.Services
 		TetrisClear,
 		LevelUp,
 		MovePiece
+	}
+
+	public enum AnagramSoundEffect
+	{
+		Success,
+		Wrong,
+		ClockTicking,
+		ClockAlarm,
+		GameStart,
+		Loser,
+		Winner
+	}
+
+	public enum BlackjackSoundEffect
+	{
+		CardDealt,
+		FlipCard,
+		Hover,
+		PokerChips
+	}
+	public enum CheckersSoundEffect
+	{
+		CheckersMove
 	}
 
 	/// <summary>
@@ -214,5 +238,59 @@ namespace GameClient.Wpf.Services
 
 			timer.Start();
 		}
+
+		public static void PlayAnagramEffect(AnagramSoundEffect effect)
+		{
+			string fileName = effect switch
+			{
+				AnagramSoundEffect.Success => "success.wav",
+				AnagramSoundEffect.Wrong => "wrong.wav",
+				AnagramSoundEffect.ClockTicking => "clockTicking.wav",
+				AnagramSoundEffect.ClockAlarm => "clockAlarm.wav",
+				AnagramSoundEffect.GameStart => "gameStart.wav",
+				AnagramSoundEffect.Loser => "loser.wav",
+				AnagramSoundEffect.Winner => "winner.wav",
+				_ => ""
+			};
+
+			if (string.IsNullOrWhiteSpace(fileName))
+				return;
+
+			var relativePath = Path.Combine("Anagram", fileName);
+			PlayOneShot(relativePath);
+		}
+		public static void PlayBlackjackEffect(BlackjackSoundEffect effect)
+		{
+			string fileName = effect switch
+			{
+				BlackjackSoundEffect.CardDealt => "cardDealt.wav",
+				BlackjackSoundEffect.FlipCard => "flipCard.wav",
+				BlackjackSoundEffect.Hover => "hover.wav",
+				BlackjackSoundEffect.PokerChips => "pokerChips.wav",
+				_ => ""
+			};
+
+			if (string.IsNullOrWhiteSpace(fileName))
+				return;
+
+			var relativePath = Path.Combine("Blackjack", fileName);
+			PlayOneShot(relativePath);
+		}
+		public static void PlayCheckersEffect(CheckersSoundEffect effect)
+		{
+			string fileName = effect switch
+			{
+				CheckersSoundEffect.CheckersMove => "checkersMove.wav",
+				_ => ""	
+				};	
+			if (string.IsNullOrWhiteSpace(fileName))
+				return;
+
+			
+			var relativePath = Path.Combine("Checkers", fileName);
+			PlayOneShot(relativePath);
+		}
+
+
 	}
 }
